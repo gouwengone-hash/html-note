@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="html-note logo">
+  <defs>
+    <linearGradient id="paper" x1="22" y1="16" x2="104" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#fffaf3"/>
+      <stop offset="1" stop-color="#f2ead7"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="40" y1="30" x2="94" y2="98" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#d97706"/>
+      <stop offset="1" stop-color="#2c5e3f"/>
+    </linearGradient>
+  </defs>
+  <rect width="128" height="128" rx="28" fill="#fbfaf6"/>
+  <path d="M35 18h42l18 18v74H35z" fill="url(#paper)" stroke="#1f201d" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M77 18v20h18" fill="none" stroke="#1f201d" stroke-width="5" stroke-linejoin="round"/>
+  <path d="M48 48h32M48 62h24M48 76h30" stroke="#1f201d" stroke-width="6" stroke-linecap="round"/>
+  <path d="M47 64h30" stroke="#d97706" stroke-width="11" stroke-linecap="round" opacity=".28"/>
+  <rect x="70" y="71" width="36" height="28" rx="6" fill="#ffffff" stroke="#2c5e3f" stroke-width="4"/>
+  <path d="M70 84H58" stroke="#2c5e3f" stroke-width="4" stroke-linecap="round" stroke-dasharray="3 6"/>
+  <path d="M80 84h16M80 92h10" stroke="#2c5e3f" stroke-width="4" stroke-linecap="round"/>
+  <path d="M29 36 18 48l11 12M99 52l11 12-11 12" fill="none" stroke="url(#accent)" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

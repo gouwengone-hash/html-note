@@ -1,0 +1,470 @@
+/* html-note */
+:root {
+  --note-rail-width: 380px;
+  --note-warm: #b8653b;
+  --note-forest: #2c5e3f;
+  --note-ink: #4a5568;
+}
+body { position: relative; }
+.annotation-rail { display: none; }
+.annotation-export {
+  position: fixed;
+  right: 18px;
+  bottom: 18px;
+  z-index: 70;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.5em;
+  font: 0.86rem/1.4 var(--font-sans-en, sans-serif), var(--font-sans-zh, sans-serif);
+}
+.annotation-export button {
+  border: 1px solid var(--color-rule-strong, #c8c5bb);
+  border-radius: 4px;
+  padding: 0.42em 0.72em;
+  color: var(--color-ink, #1f201d);
+  background: var(--color-paper, #fbfaf6);
+  box-shadow: 0 10px 24px color-mix(in oklab, var(--color-ink, #1f201d), transparent 88%);
+  cursor: pointer;
+}
+.annotation-export button:hover {
+  border-color: var(--color-accent, #2c5e3f);
+  color: var(--color-accent, #2c5e3f);
+}
+.annotation-background-toggle[aria-pressed="true"] {
+  border-color: var(--color-accent, #2c5e3f);
+  color: white;
+  background: var(--color-accent, #2c5e3f);
+}
+.annotation-export-panel {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 10px);
+  width: min(360px, calc(100vw - 36px));
+  box-sizing: border-box;
+  padding: 0.85em;
+  border: 1px solid var(--color-rule-strong, #c8c5bb);
+  border-radius: 6px;
+  background: var(--color-paper, #fbfaf6);
+  color: var(--color-ink, #1f201d);
+  box-shadow: 0 18px 50px color-mix(in oklab, var(--color-ink, #1f201d), transparent 84%);
+}
+.annotation-export-panel[hidden] { display: none; }
+.annotation-export-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+  margin-bottom: 0.55em;
+}
+.annotation-export-panel p {
+  margin: 0 0 0.65em;
+  color: var(--color-ink-mute, #8a8d86);
+  font-size: 0.78rem;
+}
+.annotation-export-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45em;
+  margin: 0.65em 0;
+}
+.annotation-export-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32em;
+  padding: 0.28em 0.5em;
+  border: 1px solid color-mix(in oklab, var(--tag-color, #2c5e3f), transparent 45%);
+  border-radius: 4px;
+  background: color-mix(in oklab, var(--tag-color, #2c5e3f), transparent 92%);
+}
+.annotation-export-tag input { accent-color: var(--tag-color, #2c5e3f); }
+.annotation-export-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.45em;
+  margin: 0.65em 0 0;
+}
+.annotation-connector {
+  position: absolute;
+  pointer-events: none;
+  opacity: 0.82;
+  overflow: visible;
+  transition: opacity 140ms;
+  z-index: 21;
+}
+.annotation-connector line {
+  fill: none;
+  stroke: color-mix(in oklab, var(--color-accent, #2c5e3f), transparent 25%);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+  vector-effect: non-scaling-stroke;
+}
+.annotation-connector.annotation-active {
+  opacity: 1;
+  z-index: 23;
+}
+.annotation-connector.annotation-active line {
+  stroke: color-mix(in oklab, var(--note-warm), transparent 10%);
+}
+.annotation-card {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.85em 0.9em;
+  border: 1px solid var(--color-rule, #e3e1da);
+  border-left: 3px solid var(--note-forest);
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--color-paper, #fbfaf6), white 24%);
+  color: var(--color-ink, #1f201d);
+  box-shadow: 0 10px 30px color-mix(in oklab, var(--color-ink, #1f201d), transparent 90%);
+  pointer-events: auto;
+  transform: translateY(0);
+  transform-origin: top right;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 140ms, background 140ms;
+  z-index: 1;
+}
+.annotation-rail[data-annotation-side="left"] .annotation-card {
+  border-left-width: 1px;
+  border-right: 3px solid var(--note-forest);
+  transform-origin: top left;
+}
+.annotation-card:focus-within,
+.annotation-card.annotation-raised {
+  border-color: var(--color-rule-strong, #c8c5bb);
+  background: color-mix(in oklab, var(--color-accent, #2c5e3f), var(--color-paper, #fbfaf6) 94%);
+  box-shadow: 0 18px 46px color-mix(in oklab, var(--color-ink, #1f201d), transparent 82%);
+  transform: translateY(-8px) scale(1.01);
+}
+.annotation-card.annotation-active {
+  border-color: color-mix(in oklab, var(--note-warm), transparent 20%);
+  background: color-mix(in oklab, var(--note-warm), var(--color-paper, #fbfaf6) 88%);
+}
+.annotation-card .card-note {
+  margin: 0.55em 0;
+  white-space: pre-wrap;
+  font-size: 0.9rem;
+  line-height: 1.65;
+}
+.annotation-card .card-note[data-quick-edit] { cursor: text; }
+.annotation-card .card-note-empty { color: var(--color-ink-mute, #8a8d86); }
+.card-note-editor {
+  width: 100%;
+  min-height: 5.5em;
+  box-sizing: border-box;
+  margin: 0.55em 0;
+  border: 1px solid var(--color-rule-strong, #c8c5bb);
+  border-radius: 4px;
+  padding: 0.5em 0.6em;
+  color: var(--color-ink, #1f201d);
+  background: var(--color-paper-soft, #f3f1e9);
+  font: 0.9rem/1.65 var(--font-sans-en, sans-serif), var(--font-sans-zh, sans-serif);
+  resize: vertical;
+}
+.annotation-card .card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35em;
+  margin: 0.4em 0;
+}
+.annotation-tag {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 0.12em 0.45em;
+  border-radius: 999px;
+  color: white;
+  font-weight: 650;
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+.annotation-card .card-actions {
+  display: flex;
+  visibility: hidden;
+  opacity: 0;
+  gap: 0.4em;
+  margin-top: 0.55em;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 120ms ease;
+}
+.annotation-card:focus-within .card-actions,
+.annotation-card.annotation-raised .card-actions {
+  visibility: visible;
+  opacity: 1;
+  max-height: 3rem;
+}
+.annotation-card button,
+.annotation-popover button {
+  border: 1px solid var(--color-rule-strong, #c8c5bb);
+  border-radius: 4px;
+  padding: 0.32em 0.55em;
+  color: var(--color-ink, #1f201d);
+  background: var(--color-paper, #fbfaf6);
+  font: 0.8rem/1.2 var(--font-sans-en, sans-serif), var(--font-sans-zh, sans-serif);
+  cursor: pointer;
+}
+.annotation-card button:hover,
+.annotation-popover button:hover {
+  border-color: var(--color-accent, #2c5e3f);
+  color: var(--color-accent, #2c5e3f);
+}
+#annotation-clear-tags:hover {
+  border-color: var(--note-warm, #b8653b);
+  color: var(--note-warm, #b8653b);
+}
+.toc-note-markers {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.22em;
+  margin-left: 0.35em;
+  vertical-align: middle;
+}
+.toc-note-dot {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 0.72em;
+  height: 0.72em;
+  min-width: 0.72em;
+  min-height: 0.72em;
+  padding: 0;
+  border: 1px solid color-mix(in oklab, var(--color-paper, #fbfaf6), black 28%);
+  border-radius: 50%;
+  box-sizing: border-box;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-paper, #fbfaf6), transparent 35%);
+  vertical-align: middle;
+}
+.toc-note-dot:hover,
+.toc-note-dot:focus {
+  outline: 2px solid color-mix(in oklab, var(--color-accent, #2c5e3f), transparent 35%);
+  outline-offset: 2px;
+}
+mark.annotation-phrase,
+mark.annotation-block { background-color: transparent; }
+.annotation-phrase {
+  color: inherit;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+  text-decoration-color: var(--color-accent, #2c5e3f);
+  background: transparent;
+  transition: background 140ms, box-shadow 140ms;
+}
+.annotation-block {
+  color: inherit;
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 0.22em;
+  text-decoration-color: var(--color-accent, #2c5e3f);
+  background: transparent;
+  transition: background 140ms, box-shadow 140ms;
+}
+body[data-annotation-body-background="true"] .annotation-phrase {
+  background: var(--annotation-mark-background, rgba(44, 94, 63, 0.12));
+}
+body[data-annotation-body-background="true"] .annotation-block {
+  background: var(--annotation-mark-background, rgba(44, 94, 63, 0.09));
+}
+.annotation-phrase.annotation-active,
+.annotation-block.annotation-active {
+  background: color-mix(in oklab, var(--note-warm), transparent 82%);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--note-warm), transparent 88%);
+}
+.annotation-phrase.annotation-preview,
+.annotation-block.annotation-preview {
+  background: color-mix(in oklab, var(--color-accent, #2c5e3f), transparent 92%);
+}
+.annotation-phrase.annotation-editing,
+.annotation-block.annotation-editing {
+  background: transparent;
+  box-shadow: none;
+  text-decoration-color: transparent;
+}
+.annotation-popover {
+  position: absolute;
+  display: none;
+  width: min(460px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow: auto;
+  box-sizing: border-box;
+  padding: 0.9em;
+  border: 1px solid var(--color-rule-strong, #c8c5bb);
+  border-radius: 6px;
+  background: var(--color-paper, #fbfaf6);
+  color: var(--color-ink, #1f201d);
+  box-shadow: 0 18px 50px color-mix(in oklab, var(--color-ink, #1f201d), transparent 84%);
+  z-index: 60;
+}
+.annotation-popover[data-open="true"] { display: block; }
+.annotation-popover header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+  margin-bottom: 0.65em;
+  color: var(--color-ink-mute, #8a8d86);
+  font-size: 0.78rem;
+}
+.annotation-popover textarea,
+.annotation-popover input[type="text"] {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--color-rule-strong, #c8c5bb);
+  border-radius: 4px;
+  padding: 0.62em 0.7em;
+  color: var(--color-ink, #1f201d);
+  background: var(--color-paper-soft, #f3f1e9);
+  font: 0.88rem/1.58 var(--font-sans-en, sans-serif), var(--font-sans-zh, sans-serif);
+}
+.annotation-popover textarea {
+  min-height: 7rem;
+  resize: vertical;
+}
+.annotation-popover .row {
+  display: flex;
+  align-items: center;
+  gap: 0.45em;
+  flex-wrap: wrap;
+  margin: 0.65em 0;
+}
+.annotation-popover .tag-list {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.35em;
+}
+.annotation-popover .tag-choice {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  box-sizing: border-box;
+  padding: 0.32em 0.55em;
+  color: white;
+  border: 0;
+}
+.annotation-popover .tag-choice[aria-pressed="true"] {
+  outline: 2px solid var(--color-ink, #1f201d);
+  outline-offset: 2px;
+}
+.annotation-popover .tag-create {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+  flex: 1 1 100%;
+  margin-bottom: 0.15em;
+}
+.annotation-popover .tag-create[hidden] { display: none; }
+.annotation-popover .tag-create input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.annotation-popover #annotation-tag-confirm {
+  min-height: 2rem;
+  box-sizing: border-box;
+}
+.annotation-popover .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+  font-size: 1rem;
+  line-height: 1;
+}
+.annotation-popover .icon-button svg {
+  width: 1.05rem;
+  height: 1.05rem;
+  stroke: currentColor;
+  fill: none;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.annotation-popover #annotation-done {
+  min-height: 2rem;
+  box-sizing: border-box;
+  padding: 0.32em 0.65em;
+}
+.annotation-popover .annotation-actions { justify-content: flex-end; }
+.annotation-popover .board {
+  display: none;
+  margin-top: 0.7em;
+}
+.annotation-popover[data-board="true"] .board { display: block; }
+.annotation-popover[data-board="true"] .text-mode { display: none; }
+.board-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35em;
+  margin-bottom: 0.55em;
+}
+.board-tools button[aria-pressed="true"] {
+  color: white;
+  border-color: var(--color-accent, #2c5e3f);
+  background: var(--color-accent, #2c5e3f);
+}
+.board-viewport {
+  width: 100%;
+  height: 360px;
+  overflow: auto;
+  border: 1px solid var(--color-rule-strong, #c8c5bb);
+  border-radius: 4px;
+  background:
+    linear-gradient(var(--color-rule, #e3e1da) 1px, transparent 1px),
+    linear-gradient(90deg, var(--color-rule, #e3e1da) 1px, transparent 1px),
+    var(--color-paper, #fbfaf6);
+  background-size: 32px 32px;
+}
+.board-viewport canvas {
+  display: block;
+  width: 1200px;
+  height: 800px;
+  touch-action: none;
+}
+.annotation-thumb {
+  display: block;
+  width: 100%;
+  max-height: 160px;
+  object-fit: contain;
+  margin-top: 0.55em;
+  border: 1px solid var(--color-rule, #e3e1da);
+  border-radius: 4px;
+  background: var(--color-paper-soft, #f3f1e9);
+}
+@media (min-width: 1300px) {
+  .annotation-rail {
+    display: block;
+    position: absolute;
+    top: 0;
+    left: var(--annotation-rail-left, auto);
+    right: var(--gutter, 48px);
+    width: var(--note-rail-width);
+    min-height: 100%;
+    pointer-events: none;
+    z-index: 22;
+  }
+  .annotation-rail[data-annotation-side="left"] {
+    left: var(--annotation-rail-left, auto);
+    right: auto;
+  }
+  .annotation-rail[data-annotation-side="right"] {
+    left: var(--annotation-rail-left, auto);
+    right: auto;
+  }
+}
+@media print {
+  .annotation-rail,
+  .annotation-export,
+  .annotation-popover,
+  .annotation-connector { display: none !important; }
+  .annotation-phrase { text-decoration: none; background: transparent; }
+  .annotation-preview { display: contents; }
+  .annotation-block { border: 0; box-shadow: none; padding-left: 0; padding-right: 0; }
+}
+

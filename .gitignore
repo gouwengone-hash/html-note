@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Generated examples / local exports
+outputs/
+report_assets/
+assets/report_assets/
+*_annotated.html
+*_noted.html
+*_html_note.html
+*_deep_reading_report_*.html
+*.tmp.html
