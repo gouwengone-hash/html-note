@@ -2,10 +2,16 @@
   const main = document.querySelector("main.document-body, main, article, .document-body, .content, body");
   const rail = document.getElementById("annotation-rail");
   const leftRail = document.getElementById("annotation-rail-left");
+  const overviewDock = document.getElementById("annotation-overview-dock");
   const exportBox = document.getElementById("annotation-export");
   const exportOpen = document.getElementById("annotation-export-open");
   const exportPanel = document.getElementById("annotation-export-panel");
   const exportClose = document.getElementById("annotation-export-close");
+  const overviewOpen = document.getElementById("annotation-overview-open");
+  const overviewPanel = document.getElementById("annotation-overview-panel");
+  const overviewClose = document.getElementById("annotation-overview-close");
+  const overviewText = document.getElementById("annotation-overview-text");
+  const saveHtml = document.getElementById("annotation-save-html");
   const exportTags = document.getElementById("annotation-export-tags");
   const exportAll = document.getElementById("annotation-export-all");
   const exportClear = document.getElementById("annotation-export-clear");
@@ -41,6 +47,10 @@
   const storeKey = `huashu-anchored-annotations:v1:${pageId}`;
   const tagKey = `huashu-anchored-annotation-tags:v1:${pageId}`;
   const layerKey = `huashu-anchored-annotation-layers:v1:${pageId}`;
+  const overviewKey = `huashu-anchored-annotation-overview:v1:${pageId}`;
+  const fileHandleDbName = "html-note-file-handles";
+  const fileHandleStoreName = "handles";
+  const fileHandleKey = `html-note-save-handle:v1:${pageId}`;
   const backgroundKey = `huashu-anchored-annotation-background:v1:${pageId}`;
   const embeddedDataId = "html-note-embedded-data";
   const defaultLayerId = "layer-note1";
@@ -57,6 +67,7 @@
     { name: "重点", color: palette[2] },
   ]));
   let layerState = normalizeLayerState(loadJson(layerKey, embeddedData?.layers || null));
+  let overviewNote = normalizeOverviewNote(loadJson(overviewKey, embeddedData?.overviewNote || ""));
   annotations = annotations.map(syncAnnotationTags).map(syncAnnotationLayer);
   let activeSelection = null;
   let activeRange = null;
@@ -66,6 +77,8 @@
   let boardMode = false;
   let selectionTimer = 0;
   let suppressSelection = false;
+  let exportMenuTimer = 0;
+  let overviewDockTimer = 0;
   const cardLowerTimers = new Map();
   let cardZIndex = 80;
   let bodyBackgroundOn = loadJson(backgroundKey, false) === true;
@@ -102,6 +115,12 @@
     localStorage.setItem(storeKey, JSON.stringify(annotations));
     localStorage.setItem(tagKey, JSON.stringify(tags));
     localStorage.setItem(layerKey, JSON.stringify(layerState));
+    localStorage.setItem(overviewKey, JSON.stringify(overviewNote));
+  }
+
+  function saveOverviewNote() {
+    overviewNote = normalizeOverviewNote(overviewText ? overviewText.value : overviewNote);
+    localStorage.setItem(overviewKey, JSON.stringify(overviewNote));
   }
 
   function saveBodyBackground() {
@@ -136,6 +155,10 @@
 
   function tagByName(name) {
     return tags.find((tag) => tag.name === name);
+  }
+
+  function normalizeOverviewNote(value) {
+    return String(value || "").replace(/\r\n/g, "\n").trim();
   }
 
   function normalizeLayerState(value) {
@@ -211,23 +234,25 @@
       visible.type = "checkbox";
       visible.checked = layer.visible !== false;
       visible.dataset.layerVisible = layer.id;
+      label.appendChild(visible);
       const name = document.createElement("span");
       name.className = "annotation-layer-name";
+      name.dataset.layerCurrent = layer.id;
       name.textContent = `${layer.name} (${annotations.filter((annotation) => annotation.layerId === layer.id).length})`;
-      label.append(visible, name);
+      if (layer.id === activeLayer().id) {
+        const active = document.createElement("span");
+        active.className = "annotation-layer-active";
+        active.textContent = "active";
+        name.appendChild(active);
+      }
       const actions = document.createElement("div");
       actions.className = "annotation-layer-actions";
-      const current = document.createElement("button");
-      current.type = "button";
-      current.dataset.layerCurrent = layer.id;
-      current.className = layer.id === activeLayer().id ? "annotation-layer-current" : "";
-      current.textContent = layer.id === activeLayer().id ? "当前" : "设为当前";
       const rename = document.createElement("button");
       rename.type = "button";
       rename.dataset.layerRename = layer.id;
-      rename.textContent = "重命名";
-      actions.append(current, rename);
-      row.append(label, actions);
+      rename.textContent = "rename";
+      actions.append(rename);
+      row.append(label, name, actions);
       layerList.appendChild(row);
     });
   }
@@ -285,8 +310,15 @@
     return text ? text.split("\n").map((line) => `> ${line}`).join("\n") : "> ";
   }
 
+  function cleanTitle(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
   function pageTitle() {
-    return (document.querySelector("h1")?.textContent || document.title || "批注导出").trim();
+    const title = cleanTitle(document.title);
+    const heading = cleanTitle(document.querySelector("h1")?.textContent);
+    if (title && (!heading || title.length >= heading.length)) return title;
+    return heading || title || "批注导出";
   }
 
   function exportFileName() {
@@ -514,7 +546,7 @@
   }
 
   function isAnnotationUiNode(node) {
-    return !!elementForNode(node)?.closest?.(".annotation-rail,.annotation-popover,.annotation-export,.annotation-connector");
+    return !!elementForNode(node)?.closest?.(".annotation-rail,.annotation-popover,.annotation-export,.annotation-overview-dock,.annotation-connector");
   }
 
   function isTocNode(node) {
@@ -526,7 +558,7 @@
   }
 
   function isIgnoredAnchorTextNode(node) {
-    return !node.nodeValue || !!node.parentElement?.closest?.(`script,style,${mathSelector},.annotation-rail,.annotation-popover,.annotation-export,#TOC,nav[role='doc-toc'],nav.toc,.toc`);
+    return !node.nodeValue || !!node.parentElement?.closest?.(`script,style,${mathSelector},.annotation-rail,.annotation-popover,.annotation-export,.annotation-overview-dock,#TOC,nav[role='doc-toc'],nav.toc,.toc`);
   }
 
   function mathContainersInRange(range) {
@@ -539,7 +571,7 @@
       }
     });
     return Array.from(containers).filter((element, index, all) => {
-      if (element.closest?.(".annotation-popover,.annotation-rail,.annotation-export")) return false;
+      if (element.closest?.(".annotation-popover,.annotation-rail,.annotation-export,.annotation-overview-dock")) return false;
       return !all.some((other, otherIndex) => otherIndex !== index && other.contains(element));
     });
   }
@@ -1398,6 +1430,70 @@
     });
   }
 
+  function syncOverviewInput() {
+    if (overviewText) overviewText.value = overviewNote;
+  }
+
+  function panelIsOpen(panel) {
+    return panel?.dataset?.open === "true";
+  }
+
+  function openExportPanel() {
+    renderExportTags();
+    renderLayerList();
+    closeOverviewPanel();
+    if (exportPanel) exportPanel.dataset.open = "true";
+  }
+
+  function closeExportPanel() {
+    if (exportPanel) exportPanel.dataset.open = "false";
+  }
+
+  function openOverviewPanel() {
+    syncOverviewInput();
+    if (overviewPanel) overviewPanel.dataset.open = "true";
+    overviewText?.focus();
+  }
+
+  function closeOverviewPanel() {
+    if (panelIsOpen(overviewPanel)) saveOverviewNote();
+    if (overviewPanel) overviewPanel.dataset.open = "false";
+  }
+
+  function closeExportMenus() {
+    closeExportPanel();
+    closeOverviewPanel();
+  }
+
+  function scheduleExportMenuClose() {
+    window.clearTimeout(exportMenuTimer);
+    exportMenuTimer = window.setTimeout(closeExportMenus, 180);
+  }
+
+  function cancelExportMenuClose() {
+    window.clearTimeout(exportMenuTimer);
+  }
+
+  function scheduleOverviewDockClose() {
+    window.clearTimeout(overviewDockTimer);
+    overviewDockTimer = window.setTimeout(() => {
+      if (
+        overviewDock?.matches?.(":hover") ||
+        overviewPanel?.matches?.(":hover") ||
+        overviewDock?.contains?.(document.activeElement) ||
+        overviewPanel?.contains?.(document.activeElement)
+      ) {
+        cancelOverviewDockClose();
+        return;
+      }
+      closeOverviewPanel();
+    }, 220);
+  }
+
+  function cancelOverviewDockClose() {
+    window.clearTimeout(overviewDockTimer);
+  }
+
   function annotationsForExport() {
     const selected = new Set(selectedExportTags());
     const tagOrder = new Map(tags.map((tag, index) => [tag.name, index]));
@@ -1454,9 +1550,15 @@
     const stats = tagStats(items);
     const tagCounters = new Map();
     let currentHeading = "";
+    const overview = normalizeOverviewNote(overviewNote);
     const lines = [
       `# ${pageTitle()} - 批注导出`,
       "",
+    ];
+    if (overview) {
+      lines.push("## 总记录", "", overview, "");
+    }
+    lines.push(
       "## 说明",
       "",
       "这个 Markdown 文件由 HTML 批注系统导出，用于汇总正文引用、标签和批注内容，方便后续交给 GPT 继续分析。",
@@ -1473,7 +1575,7 @@
       "",
       "## 标签统计",
       "",
-    ];
+    );
     tags.forEach((tag) => {
       lines.push(`- ${tag.name}: ${stats.counts.get(tag.name) || 0}`);
     });
@@ -1513,9 +1615,91 @@
     window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
+  function openFileHandleDb() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(fileHandleDbName, 1);
+      request.onupgradeneeded = () => request.result.createObjectStore(fileHandleStoreName);
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async function fileHandleStore(mode, callback) {
+    const db = await openFileHandleDb();
+    try {
+      return await new Promise((resolve, reject) => {
+        const transaction = db.transaction(fileHandleStoreName, mode);
+        const store = transaction.objectStore(fileHandleStoreName);
+        const request = callback(store);
+        request.onsuccess = () => resolve(request.result);
+        request.onerror = () => reject(request.error);
+      });
+    } finally {
+      db.close();
+    }
+  }
+
+  async function savedFileHandle() {
+    if (!window.indexedDB) return null;
+    try {
+      return await fileHandleStore("readonly", (store) => store.get(fileHandleKey));
+    } catch {
+      return null;
+    }
+  }
+
+  async function rememberFileHandle(handle) {
+    if (!window.indexedDB) return;
+    try {
+      await fileHandleStore("readwrite", (store) => store.put(handle, fileHandleKey));
+    } catch {
+      // Saving the handle is an enhancement; writing can still proceed this time.
+    }
+  }
+
+  async function writableFileHandle() {
+    if (!window.showOpenFilePicker && !window.showSaveFilePicker) return null;
+    let handle = await savedFileHandle();
+    if (handle?.queryPermission) {
+      let permission = await handle.queryPermission({ mode: "readwrite" });
+      if (permission !== "granted") permission = await handle.requestPermission({ mode: "readwrite" });
+      if (permission === "granted") return handle;
+    }
+    const pickerOptions = {
+      types: [{ description: "HTML", accept: { "text/html": [".html", ".htm"] } }],
+    };
+    if (window.showOpenFilePicker) {
+      const handles = await window.showOpenFilePicker({ ...pickerOptions, multiple: false });
+      handle = handles[0];
+    } else {
+      handle = await window.showSaveFilePicker({ ...pickerOptions, suggestedName: htmlFileName() });
+    }
+    await rememberFileHandle(handle);
+    return handle;
+  }
+
+  async function saveAnnotatedHtmlInPlace() {
+    saveOverviewNote();
+    saveAll();
+    const html = htmlWithEmbeddedNotes();
+    try {
+      const handle = await writableFileHandle();
+      if (!handle) {
+        window.alert("Current browser cannot overwrite this local HTML directly. Use Save as instead.");
+        return;
+      }
+      const writable = await handle.createWritable();
+      await writable.write(html);
+      await writable.close();
+    } catch (error) {
+      if (error?.name !== "AbortError") window.alert("Save failed. Choose the current HTML file when prompted, or use Save as.");
+    }
+  }
+
   function exportAnnotationsMarkdown() {
+    saveOverviewNote();
     const items = annotationsForExport();
-    if (!items.length) {
+    if (!items.length && !normalizeOverviewNote(overviewNote)) {
       window.alert("没有符合条件的批注可导出。");
       return;
     }
@@ -1530,6 +1714,7 @@
       annotations,
       tags,
       layers: layerState,
+      overviewNote,
     };
   }
 
@@ -1538,7 +1723,9 @@
     const doc = document.documentElement.cloneNode(true);
     doc.querySelectorAll(".annotation-connector").forEach((node) => node.remove());
     doc.querySelectorAll(".annotation-rail").forEach((node) => { node.innerHTML = ""; });
-    doc.querySelectorAll(".annotation-export-panel").forEach((node) => { node.hidden = true; });
+    doc.querySelectorAll(".annotation-export-panel,.annotation-overview-panel").forEach((node) => {
+      node.removeAttribute("data-open");
+    });
     doc.querySelectorAll(".annotation-popover").forEach((node) => { node.dataset.open = "false"; });
     doc.querySelectorAll("[data-annotation-id],[data-annotation-preview-id]").forEach((node) => {
       if (node.tagName === "MARK") {
@@ -1575,6 +1762,7 @@
   }
 
   function exportAnnotatedHtml() {
+    saveOverviewNote();
     saveAll();
     downloadFile(htmlWithEmbeddedNotes(), exportHtmlFileName(), "text/html;charset=utf-8");
   }
@@ -1616,7 +1804,7 @@
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
-        if (node.parentElement?.closest?.(`mark,script,style,${mathSelector},.annotation-rail,.annotation-popover,.annotation-export,#TOC,nav[role='doc-toc'],nav.toc,.toc`)) return NodeFilter.FILTER_REJECT;
+        if (node.parentElement?.closest?.(`mark,script,style,${mathSelector},.annotation-rail,.annotation-popover,.annotation-export,.annotation-overview-dock,#TOC,nav[role='doc-toc'],nav.toc,.toc`)) return NodeFilter.FILTER_REJECT;
         try {
           return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
         } catch {
@@ -1867,18 +2055,47 @@
 
   document.addEventListener("pointerdown", (event) => {
     const target = event.target;
-    if (target.closest?.(".annotation-popover,.annotation-rail,.annotation-export")) return;
-    if (exportPanel && !exportPanel.hidden) exportPanel.hidden = true;
+    if (target.closest?.(".annotation-popover,.annotation-rail,.annotation-export,.annotation-overview-dock")) return;
+    closeExportMenus();
     if (pop.dataset.open === "true" && !editingId) closePopover();
   });
 
-  exportOpen.addEventListener("click", () => {
-    renderExportTags();
-    renderLayerList();
-    exportPanel.hidden = !exportPanel.hidden;
+  overviewDock?.addEventListener("mouseenter", () => {
+    cancelOverviewDockClose();
+    openOverviewPanel();
   });
+  overviewDock?.addEventListener("mouseleave", scheduleOverviewDockClose);
+  overviewDock?.addEventListener("focusin", () => {
+    cancelOverviewDockClose();
+    openOverviewPanel();
+  });
+  overviewDock?.addEventListener("focusout", (event) => {
+    if (!overviewDock.contains(event.relatedTarget) && !overviewPanel?.contains?.(event.relatedTarget)) scheduleOverviewDockClose();
+  });
+  overviewPanel?.addEventListener("mouseenter", cancelOverviewDockClose);
+  overviewPanel?.addEventListener("mouseleave", scheduleOverviewDockClose);
+  overviewPanel?.addEventListener("focusin", cancelOverviewDockClose);
+  overviewPanel?.addEventListener("focusout", (event) => {
+    if (!overviewDock?.contains?.(event.relatedTarget) && !overviewPanel.contains(event.relatedTarget)) scheduleOverviewDockClose();
+  });
+  overviewOpen?.addEventListener("click", openOverviewPanel);
+  overviewClose?.addEventListener("click", closeOverviewPanel);
+  saveHtml?.addEventListener("click", saveAnnotatedHtmlInPlace);
+  overviewText?.addEventListener("input", saveOverviewNote);
+  overviewText?.addEventListener("blur", saveOverviewNote);
+
+  exportBox.addEventListener("mouseenter", cancelExportMenuClose);
+  exportBox.addEventListener("mouseleave", scheduleExportMenuClose);
+  exportBox.addEventListener("focusin", cancelExportMenuClose);
+  exportBox.addEventListener("focusout", (event) => {
+    if (!exportBox.contains(event.relatedTarget)) scheduleExportMenuClose();
+  });
+
+  exportOpen.addEventListener("mouseenter", openExportPanel);
+  exportOpen.addEventListener("focus", openExportPanel);
+  exportOpen.addEventListener("click", openExportPanel);
   exportClose?.addEventListener("click", () => {
-    exportPanel.hidden = true;
+    closeExportPanel();
   });
   exportAll?.addEventListener("click", () => {
     exportTags?.querySelectorAll("input[type='checkbox']").forEach((input) => {
@@ -1894,7 +2111,7 @@
   exportDownload?.addEventListener("click", exportAnnotationsMarkdown);
   exportHtml?.addEventListener("click", exportAnnotatedHtml);
   layerAdd?.addEventListener("click", () => {
-    const name = window.prompt("新图层名称", nextLayerName());
+    const name = window.prompt("New group name", nextLayerName());
     const cleanName = String(name || "").trim();
     if (!cleanName) return;
     const layer = {
@@ -1929,7 +2146,7 @@
     if (renameId) {
       const layer = layerById(renameId);
       if (!layer) return;
-      const name = window.prompt("图层名称", layer.name);
+      const name = window.prompt("Group name", layer.name);
       const cleanName = String(name || "").trim();
       if (!cleanName) return;
       layer.name = cleanName;

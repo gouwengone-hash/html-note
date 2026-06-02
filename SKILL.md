@@ -15,9 +15,12 @@ Use this skill when the user wants to mark up an HTML file locally, store notes 
 - rename existing tags by double-clicking them and sync old cards
 - switch the note editor to a whiteboard with pen, line, arrow, rectangle, circle, triangle, eraser, undo, redo, and image paste/upload
 - edit/copy/delete existing cards
+- add a bottom-center `总记录` dock for whole-document questions, overall judgments, or AI follow-up prompts
+- auto-expand the bottom-right menu on hover/focus with a springy pop-in animation, and auto-collapse it when the pointer leaves
+- provide a `保存` button next to `总记录` that writes the current annotated HTML back to a user-authorized local file when the browser supports the File System Access API
 - export marks as Markdown, optionally filtered by selected tags, including a file/rules/statistics preface, quoted source text, tag-numbered notes, and embedded whiteboard images
 - create multiple note layers such as `note1` and `note2`, choose the active layer for new annotations, and show/hide layers independently
-- export a single-file HTML copy with embedded annotation data so another browser or computer can restore the same note layers without the original `localStorage`
+- export a single-file HTML copy with embedded annotation data and the `总记录` text so another browser or computer can restore the same note layers without the original `localStorage`
 - show faint dashed anchors in the正文 and highlight them when hovering cards
 - add same-color circular markers after matching TOC headings
 - if a selected heading is not present in the TOC, attach the marker to the nearest preceding heading that is present in the TOC
@@ -61,12 +64,18 @@ This uses `huashu-md-html` with the `interactive` theme by default. Override wit
    - selecting across paragraphs marks each text segment without moving or wrapping paragraph blocks
    - hover over a card deepens the card and highlights the正文 anchor
    - hovering a right-side card brings it to the top with only a slight movement, then restores it when the pointer leaves
-   - Mune opens the export/clear menu, and clicking blank page space closes it
-   - Mune shows a 批注图层 section; 新建图层 creates `note2`/custom layers, 设为当前 controls where new notes are saved, and layer checkboxes show/hide matching cards,正文 anchors, connectors, TOC dots, and Markdown export items
+   - hovering or focusing the bottom-right menu expands hidden controls with a springy animation; moving the pointer away auto-collapses open panels without a click
+   - hovering or focusing Mune opens an English export menu with the same translucent, springy visual style as 总记录; clicking blank page space closes it
+   - Mune shows a `Groups` section; `new group` creates `note2`/custom groups, clicking the group name sets where new notes are saved, and group checkboxes show/hide matching cards,正文 anchors, connectors, TOC dots, and Markdown export items
    - Mune defaults export filtering to the `疑问` tag when that tag exists
-   - 导出MD starts with a short说明, HTML filename, export rules, and tag counts
-   - 导出MD can export only notes matching the selected tag(s), including quoted正文, note text, tag-numbered notes, and whiteboard image Markdown
-   - 导出带笔记HTML downloads a new single HTML file that preserves the original page, html-note UI, tags, note layers, annotations, and whiteboard images in an embedded JSON block
+   - 总记录 sits at the bottom center as a long semi-transparent dock; hovering/focusing it opens a wider textarea and focuses the input directly
+   - 总记录 auto-saves local text on input without requiring Enter
+   - 保存 next to 总记录 writes the current single-file HTML back to an authorized local HTML file; browsers can infer the displayed `file://` path but cannot overwrite it until the user grants write permission by choosing that HTML file once
+   - 导出MD puts non-empty 总记录 content near the front of the Markdown before说明/statistics and individual annotation sections
+   - 导出MD can export 总记录 alone even when there are no matching point annotations
+   - Export MD starts with a short说明, HTML filename, export rules, and tag counts
+   - Export MD can export only notes matching the selected tag(s), including quoted正文, note text, tag-numbered notes, and whiteboard image Markdown
+   - Save as downloads a new single HTML file that preserves the original page, html-note UI, 总记录, tags, groups, annotations, and whiteboard images in an embedded JSON block
    - opening an exported HTML copy on another browser/computer restores embedded notes when no local notes exist for that file path; continuing to annotate still writes to that browser's localStorage until exporting another HTML copy
    - selecting across MathJax CHTML or native MathML formulas treats the formula as an atomic annotation target; no `mark` should be inserted inside `mjx-container`, `<math>`, `<semantics>`, `<mrow>`, `<mi>`, `<mo>`, `<mn>`, `<mtext>`, or `<annotation>`
    - background toggles a faint tag-colored background on the marked正文 while preserving dashed underlines
@@ -128,7 +137,9 @@ Do not remove the managed html-note UI/scripts when exporting; strip only runtim
 ## Notes
 
 - This is a browser-local html-note layer system, not a server database. Data is saved under `localStorage` keys scoped to `location.pathname`.
-- For portable archival/sharing, use 导出带笔记HTML. The exported copy is still a single HTML file, but later edits in another browser stay local until that user exports another copy.
+- For portable archival/sharing, use 另存为. The exported copy is still a single HTML file, but later edits in another browser stay local until that user saves or exports another copy.
+- Direct local overwrite through 保存 depends on browser file-write permission. The first save may ask the user to choose the current HTML file; after permission is granted, later saves can overwrite that authorized file.
+- `总记录` is separate from point annotations. Clearing visible annotations should not erase the whole-document record unless the user edits that textarea directly.
 - Prefer the narrowest reading content root available: `main.document-body`, `article`, then `body`. Never treat theme chrome such as TOC/sidebar/header controls as the primary content root.
 
 

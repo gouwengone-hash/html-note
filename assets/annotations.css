@@ -7,16 +7,44 @@
 }
 body { position: relative; }
 .annotation-rail { display: none; }
+.annotation-overview-dock,
 .annotation-export {
   position: fixed;
-  right: 18px;
   bottom: 18px;
   z-index: 70;
   display: flex;
   align-items: flex-end;
   gap: 0.5em;
+  padding: 10px;
+  margin: -10px;
   font: 0.86rem/1.4 var(--font-sans-en, sans-serif), var(--font-sans-zh, sans-serif);
+  --annotation-menu-spring: cubic-bezier(0.18, 1.35, 0.34, 1);
 }
+.annotation-export {
+  right: 70px;
+}
+.annotation-overview-dock {
+  left: 50%;
+  transform: translateX(-50%);
+  align-items: center;
+  justify-content: center;
+  min-width: min(420px, calc(100vw - 36px));
+  border: 1px solid color-mix(in oklab, var(--color-rule-strong, #c8c5bb), transparent 25%);
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--color-paper, #fbfaf6), transparent 18%);
+  box-shadow: 0 10px 30px color-mix(in oklab, var(--color-ink, #1f201d), transparent 88%);
+  opacity: 0.48;
+  backdrop-filter: blur(10px);
+  transition: opacity 180ms ease, transform 280ms var(--annotation-menu-spring), box-shadow 180ms ease, background 180ms ease;
+}
+.annotation-overview-dock:hover,
+.annotation-overview-dock:focus-within {
+  opacity: 1;
+  transform: translateX(-50%) translateY(-2px) scale(1.01);
+  background: color-mix(in oklab, var(--color-paper, #fbfaf6), white 8%);
+  box-shadow: 0 18px 44px color-mix(in oklab, var(--color-ink, #1f201d), transparent 82%);
+}
+.annotation-overview-dock button,
 .annotation-export button {
   border: 1px solid var(--color-rule-strong, #c8c5bb);
   border-radius: 4px;
@@ -25,9 +53,48 @@ body { position: relative; }
   background: var(--color-paper, #fbfaf6);
   box-shadow: 0 10px 24px color-mix(in oklab, var(--color-ink, #1f201d), transparent 88%);
   cursor: pointer;
+  white-space: nowrap;
+  transition: color 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 180ms ease, transform 260ms var(--annotation-menu-spring), opacity 180ms ease, max-width 260ms var(--annotation-menu-spring), padding 220ms ease;
 }
+.annotation-export > button:not(#annotation-export-open) {
+  max-width: 0;
+  padding-left: 0;
+  padding-right: 0;
+  opacity: 0;
+  overflow: hidden;
+  transform: translateX(18px) scale(0.82);
+  pointer-events: none;
+}
+.annotation-export:hover > button,
+.annotation-export:focus-within > button {
+  max-width: 10rem;
+  padding-left: 0.72em;
+  padding-right: 0.72em;
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
+}
+#annotation-export-open {
+  min-width: 6.5rem;
+  transform: scale(1);
+}
+.annotation-export:hover #annotation-export-open,
+.annotation-export:focus-within #annotation-export-open {
+  transform: translateY(-1px) scale(1.04);
+  box-shadow: 0 14px 30px color-mix(in oklab, var(--color-ink, #1f201d), transparent 84%);
+}
+.annotation-overview-dock button:hover,
 .annotation-export button:hover {
   border-color: var(--color-accent, #2c5e3f);
+  color: var(--color-accent, #2c5e3f);
+  transform: translateY(-2px) scale(1.03);
+}
+#annotation-overview-open {
+  flex: 1 1 auto;
+  min-width: 13rem;
+}
+#annotation-save-html {
+  border-color: color-mix(in oklab, var(--color-accent, #2c5e3f), transparent 35%);
   color: var(--color-accent, #2c5e3f);
 }
 .annotation-background-toggle[aria-pressed="true"] {
@@ -39,44 +106,134 @@ body { position: relative; }
   position: absolute;
   right: 0;
   bottom: calc(100% + 10px);
-  width: min(360px, calc(100vw - 36px));
+  width: min(620px, calc(100vw - 36px));
   box-sizing: border-box;
-  padding: 0.85em;
+  padding: 0.9em;
+  border: 1px solid color-mix(in oklab, var(--color-rule-strong, #c8c5bb), transparent 18%);
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--color-paper, #fbfaf6), transparent 6%);
+  color: var(--color-ink, #1f201d);
+  box-shadow: 0 18px 50px color-mix(in oklab, var(--color-ink, #1f201d), transparent 84%);
+  backdrop-filter: blur(10px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(18px) scale(0.94);
+  transform-origin: bottom right;
+  transition: opacity 170ms ease, visibility 0s linear 190ms, transform 280ms var(--annotation-menu-spring);
+}
+.annotation-overview-panel {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 12px);
+  width: min(720px, calc(100vw - 36px));
+  box-sizing: border-box;
+  padding: 0.9em;
   border: 1px solid var(--color-rule-strong, #c8c5bb);
   border-radius: 6px;
   background: var(--color-paper, #fbfaf6);
   color: var(--color-ink, #1f201d);
   box-shadow: 0 18px 50px color-mix(in oklab, var(--color-ink, #1f201d), transparent 84%);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(18px) scale(0.94);
+  transform-origin: bottom center;
+  transition: opacity 170ms ease, visibility 0s linear 190ms, transform 280ms var(--annotation-menu-spring);
 }
-.annotation-export-panel[hidden] { display: none; }
-.annotation-export-panel header {
+.annotation-overview-panel::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -18px;
+  height: 18px;
+}
+.annotation-export-panel[data-open="true"],
+.annotation-overview-panel[data-open="true"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  transition-delay: 0s;
+}
+.annotation-overview-panel[data-open="true"] {
+  transform: translateX(-50%) translateY(0) scale(1);
+}
+.annotation-overview-panel header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1em;
   margin-bottom: 0.55em;
 }
+.annotation-export-panel header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1em;
+  margin-bottom: 0.7em;
+  font-weight: 700;
+  letter-spacing: 0;
+}
+.annotation-overview-panel textarea {
+  display: block;
+  width: 100%;
+  min-height: 180px;
+  box-sizing: border-box;
+  resize: vertical;
+  border: 1px solid var(--color-rule, #e3e1da);
+  border-radius: 4px;
+  padding: 0.7em;
+  color: var(--color-ink, #1f201d);
+  background: color-mix(in oklab, var(--color-paper, #fbfaf6), white 18%);
+  font: inherit;
+}
+.annotation-overview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65em;
+  margin-top: 0.65em;
+  color: var(--color-ink-mute, #8a8d86);
+  font-size: 0.78rem;
+}
 .annotation-export-panel p {
   margin: 0 0 0.65em;
   color: var(--color-ink-mute, #8a8d86);
   font-size: 0.78rem;
 }
+.annotation-tag-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8em;
+  margin: 0.7em 0;
+}
 .annotation-export-tags {
   display: flex;
   flex-wrap: wrap;
   gap: 0.45em;
-  margin: 0.65em 0;
+  min-width: 0;
+  margin: 0;
+}
+.annotation-tag-tools {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 0.45em;
+}
+.annotation-tag-tools button {
+  min-width: 4.5rem;
 }
 .annotation-layer-panel {
   margin: 0.75em 0;
   padding: 0.65em;
-  border: 1px solid var(--color-rule, #e3e1da);
+  border: 1px solid color-mix(in oklab, var(--color-rule, #e3e1da), transparent 14%);
   border-radius: 6px;
-  background: color-mix(in oklab, var(--color-paper, #fbfaf6), white 22%);
+  background: color-mix(in oklab, var(--color-paper, #fbfaf6), white 16%);
 }
 .annotation-panel-title,
 .annotation-layer-item {
-  display: flex;
   align-items: center;
   gap: 0.5em;
 }
@@ -90,7 +247,8 @@ body { position: relative; }
   gap: 0.42em;
 }
 .annotation-layer-item {
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   min-width: 0;
 }
 .annotation-layer-item label {
@@ -100,13 +258,19 @@ body { position: relative; }
   gap: 0.42em;
 }
 .annotation-layer-name {
+  cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.annotation-layer-current {
-  border-color: var(--color-accent, #2c5e3f) !important;
+.annotation-layer-name:hover {
   color: var(--color-accent, #2c5e3f) !important;
+}
+.annotation-layer-active {
+  margin-left: 0.45em;
+  color: var(--color-accent, #2c5e3f);
+  font-size: 0.72rem;
+  font-weight: 700;
 }
 .annotation-export-tag {
   display: inline-flex;
@@ -122,8 +286,16 @@ body { position: relative; }
   display: flex;
   align-items: center;
   justify-content: flex-end;
+  flex-wrap: wrap;
   gap: 0.45em;
   margin: 0.65em 0 0;
+}
+.annotation-export-actions button {
+  flex: 0 0 auto;
+  min-width: 7rem;
+}
+#annotation-export-html {
+  min-width: 6rem;
 }
 .annotation-connector {
   position: absolute;

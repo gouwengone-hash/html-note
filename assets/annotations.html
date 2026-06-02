@@ -1,28 +1,44 @@
 <div class="annotation-rail" id="annotation-rail-left" data-annotation-side="left" aria-label="左侧批注卡片"></div>
 <div class="annotation-rail" id="annotation-rail" data-annotation-side="right" aria-label="右侧批注卡片"></div>
+<div class="annotation-overview-dock" id="annotation-overview-dock">
+  <button type="button" id="annotation-overview-open">总记录</button>
+  <button type="button" id="annotation-save-html">保存</button>
+  <div class="annotation-overview-panel" id="annotation-overview-panel" role="dialog" aria-label="总记录">
+    <header>
+      <span>总记录</span>
+      <button type="button" id="annotation-overview-close">关闭</button>
+    </header>
+    <textarea id="annotation-overview-text" placeholder="记录这篇 HTML 的整体问题、核心判断或想交给 AI 继续深读的方向..."></textarea>
+    <div class="annotation-overview-actions">
+      <span>自动保存文本，导出批注时置于最前。</span>
+    </div>
+  </div>
+</div>
 <div class="annotation-export" id="annotation-export">
   <button type="button" id="annotation-body-background-toggle" class="annotation-background-toggle" aria-pressed="false">background</button>
   <button type="button" id="annotation-export-open">Mune</button>
-  <div class="annotation-export-panel" id="annotation-export-panel" role="dialog" aria-label="html-note menu" hidden>
+  <div class="annotation-export-panel" id="annotation-export-panel" role="dialog" aria-label="html-note menu">
     <header>
       <span>Mune</span>
-      <button type="button" id="annotation-export-close">关闭</button>
+      <button type="button" id="annotation-export-html">Save as</button>
     </header>
-    <p>默认导出疑问标签；可按标签筛选。</p>
-    <section class="annotation-layer-panel" aria-label="批注图层">
+    <section class="annotation-layer-panel" aria-label="annotation groups">
       <div class="annotation-panel-title">
-        <span>批注图层</span>
-        <button type="button" id="annotation-layer-add">新建图层</button>
+        <span>Groups</span>
+        <button type="button" id="annotation-layer-add">new group</button>
       </div>
       <div class="annotation-layer-list" id="annotation-layer-list"></div>
     </section>
-    <div class="annotation-export-tags" id="annotation-export-tags"></div>
+    <div class="annotation-tag-row">
+      <div class="annotation-export-tags" id="annotation-export-tags"></div>
+      <div class="annotation-tag-tools">
+        <button type="button" id="annotation-export-all">all</button>
+        <button type="button" id="annotation-export-clear">reset</button>
+      </div>
+    </div>
     <div class="row annotation-export-actions">
-      <button type="button" id="annotation-export-all">全选标签</button>
-      <button type="button" id="annotation-export-clear">清空标签</button>
-      <button type="button" id="annotation-export-download">导出批注</button>
-      <button type="button" id="annotation-export-html">导出带笔记HTML</button>
-      <button type="button" id="annotation-clear-tags">清空批注</button>
+      <button type="button" id="annotation-export-download">Export MD</button>
+      <button type="button" id="annotation-clear-tags">Clear notes</button>
     </div>
   </div>
 </div>
