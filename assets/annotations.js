@@ -45,7 +45,8 @@
   const embeddedDataId = "html-note-embedded-data";
   const defaultLayerId = "layer-note1";
   const palette = ["#15803d", "#d97706", "#2563eb", "#db2777", "#7c3aed"];
-  const blockSelector = "p,li,blockquote,figure,table,pre,.math.display,h1,h2,h3,h4,h5,h6";
+  const mathSelector = ".math, .MathJax, .MJX-TEX, mjx-container, math";
+  const blockSelector = "p,li,blockquote,figure,table,pre,.math.display,math[display='block'],h1,h2,h3,h4,h5,h6";
   const anchorSelector = "[data-annotation-id]";
 
   const embeddedData = loadEmbeddedData();
@@ -245,7 +246,7 @@
   }
 
   function captureOriginalMathSources() {
-    main.querySelectorAll(".math.inline,.math.display").forEach((element) => {
+    main.querySelectorAll(".math.inline,.math.display,math").forEach((element) => {
       if (element.dataset.htmlNoteMathSource) return;
       const source = mathSourceForElement(element);
       if (source.trim()) element.dataset.htmlNoteMathSource = source;
@@ -253,7 +254,7 @@
   }
 
   function mathSourceForElement(element) {
-    const direct = element.querySelector?.("annotation")?.textContent || element.textContent || "";
+    const direct = element.querySelector?.("annotation[encoding='application/x-tex'],annotation")?.textContent || element.textContent || "";
     if (direct.trim()) return direct;
     try {
       const mathItem = window.MathJax?.startup?.document?.math?.find((item) => element.contains(item.typesetRoot) || item.start?.node === element);
@@ -525,12 +526,12 @@
   }
 
   function isIgnoredAnchorTextNode(node) {
-    return !node.nodeValue || !!node.parentElement?.closest?.("script,style,.math,.MathJax,.MJX-TEX,.mjx-container,.annotation-rail,.annotation-popover,.annotation-export,#TOC,nav[role='doc-toc'],nav.toc,.toc");
+    return !node.nodeValue || !!node.parentElement?.closest?.(`script,style,${mathSelector},.annotation-rail,.annotation-popover,.annotation-export,#TOC,nav[role='doc-toc'],nav.toc,.toc`);
   }
 
   function mathContainersInRange(range) {
     const containers = new Set();
-    main.querySelectorAll(".math, .MathJax, .MJX-TEX, mjx-container").forEach((element) => {
+    main.querySelectorAll(mathSelector).forEach((element) => {
       try {
         if (range.intersectsNode(element)) containers.add(element);
       } catch {
@@ -559,7 +560,7 @@
   }
 
   function mathElementIndex(element) {
-    return Array.from(main.querySelectorAll(".math, .MathJax, .MJX-TEX, mjx-container")).indexOf(element);
+    return Array.from(main.querySelectorAll(mathSelector)).indexOf(element);
   }
 
   function orderedSelectionParts(range) {
@@ -753,11 +754,11 @@
   function mathElementForPart(part) {
     if (part?.id) {
       const element = document.getElementById(part.id);
-      if (element?.matches?.(".math, .MathJax, .MJX-TEX, mjx-container")) return element;
+      if (element?.matches?.(mathSelector)) return element;
     }
     const text = compactText(part?.text);
     if (!text) return null;
-    const elements = Array.from(main.querySelectorAll(".math, .MathJax, .MJX-TEX, mjx-container"));
+    const elements = Array.from(main.querySelectorAll(mathSelector));
     if (Number.isInteger(part?.index)) {
       const indexed = elements[part.index];
       if (indexed && compactText(mathTextForElement(indexed)) === text) return indexed;
@@ -767,7 +768,7 @@
 
   function markMathElement(element, annotation) {
     if (!element || isAnnotationUiNode(element) || isTocNode(element)) return false;
-    if (!element.matches?.(".math, .MathJax, .MJX-TEX, mjx-container")) return false;
+    if (!element.matches?.(mathSelector)) return false;
     element.dataset.annotationId = annotation.id;
     element.classList.add("annotation-block");
     setMarkColors(element, annotation);
@@ -1033,7 +1034,7 @@
   }
 
   function contentRect() {
-    const candidates = Array.from(main.querySelectorAll("p,li,blockquote,figure,table,pre,h1,h2,h3,h4,h5,h6,.math.display"))
+    const candidates = Array.from(main.querySelectorAll("p,li,blockquote,figure,table,pre,h1,h2,h3,h4,h5,h6,.math.display,math[display='block']"))
       .filter((node) => !isAnnotationUiNode(node) && !isTocNode(node));
     const rects = candidates
       .map((node) => node.getBoundingClientRect())
@@ -1548,11 +1549,13 @@
       delete node.dataset.annotationId;
       delete node.dataset.annotationPreviewId;
     });
-    doc.querySelectorAll(".math.inline,.math.display").forEach((node) => {
+    doc.querySelectorAll(".math.inline,.math.display,math").forEach((node) => {
       const source = node.dataset.htmlNoteMathSource || node.querySelector?.("annotation")?.textContent || "";
       if (!source.trim()) return;
-      node.innerHTML = "";
-      node.textContent = source;
+      if (node.tagName.toLowerCase() !== "math") {
+        node.innerHTML = "";
+        node.textContent = source;
+      }
       node.removeAttribute("tabindex");
       node.classList.remove("annotation-block", "annotation-phrase", "annotation-active", "annotation-editing", "annotation-preview");
       delete node.dataset.annotationId;
@@ -1613,7 +1616,7 @@
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
-        if (node.parentElement?.closest?.("mark,script,style,.math,.MathJax,.MJX-TEX,.mjx-container,.annotation-rail,.annotation-popover,.annotation-export,#TOC,nav[role='doc-toc'],nav.toc,.toc")) return NodeFilter.FILTER_REJECT;
+        if (node.parentElement?.closest?.(`mark,script,style,${mathSelector},.annotation-rail,.annotation-popover,.annotation-export,#TOC,nav[role='doc-toc'],nav.toc,.toc`)) return NodeFilter.FILTER_REJECT;
         try {
           return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
         } catch {
@@ -1701,7 +1704,8 @@
     if (Array.isArray(annotation.mathIds) && annotation.mathIds.length) return annotation.mathIds;
     const text = compactText(annotation.text);
     if (!text) return [];
-    return Array.from(main.querySelectorAll(".math[id], .MathJax[id], .MJX-TEX[id], mjx-container[id]"))
+    return Array.from(main.querySelectorAll(mathSelector))
+      .filter((element) => element.id)
       .filter((element) => {
         const mathText = compactText(element.textContent);
         return mathText && (text.includes(mathText) || mathText.includes(text));
@@ -1710,7 +1714,7 @@
   }
 
   function markExistingElement(element, annotation) {
-    if (!element || isAnnotationUiNode(element) || isTocNode(element) || element.closest?.(`mark,script,style,.math,.MathJax,.MJX-TEX,.mjx-container,${anchorSelector}`)) return false;
+    if (!element || isAnnotationUiNode(element) || isTocNode(element) || element.closest?.(`mark,script,style,${mathSelector},${anchorSelector}`)) return false;
     element.dataset.annotationId = annotation.id;
     element.classList.add(annotation.blocky ? "annotation-block" : "annotation-phrase");
     setMarkColors(element, annotation);

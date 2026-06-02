@@ -308,7 +308,8 @@ mark.annotation-block { background-color: transparent; }
 .math.annotation-block,
 .MathJax.annotation-block,
 .MJX-TEX.annotation-block,
-mjx-container.annotation-block {
+mjx-container.annotation-block,
+math.annotation-block {
   border-radius: 3px;
   text-decoration-line: underline;
   text-decoration-style: dashed;
@@ -317,7 +318,8 @@ mjx-container.annotation-block {
   text-decoration-color: var(--annotation-mark-color, var(--color-accent, #2c5e3f));
 }
 .math.display.annotation-block,
-mjx-container[display="true"].annotation-block {
+mjx-container[display="true"].annotation-block,
+math[display="block"].annotation-block {
   border-radius: 4px;
   outline: 1px dashed var(--annotation-mark-color, var(--color-accent, #2c5e3f));
   outline-offset: 4px;

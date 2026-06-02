@@ -61,13 +61,14 @@ This uses `huashu-md-html` with the `interactive` theme by default. Override wit
    - selecting across paragraphs marks each text segment without moving or wrapping paragraph blocks
    - hover over a card deepens the card and highlights the正文 anchor
    - hovering a right-side card brings it to the top with only a slight movement, then restores it when the pointer leaves
-- Mune opens the export/clear menu, and clicking blank page space closes it
-- Mune shows a 批注图层 section; 新建图层 creates `note2`/custom layers, 设为当前 controls where new notes are saved, and layer checkboxes show/hide matching cards,正文 anchors, connectors, TOC dots, and Markdown export items
-- Mune defaults export filtering to the `疑问` tag when that tag exists
-- 导出MD starts with a short说明, HTML filename, export rules, and tag counts
-- 导出MD can export only notes matching the selected tag(s), including quoted正文, note text, tag-numbered notes, and whiteboard image Markdown
-- 导出带笔记HTML downloads a new single HTML file that preserves the original page, html-note UI, tags, note layers, annotations, and whiteboard images in an embedded JSON block
-- opening an exported HTML copy on another browser/computer restores embedded notes when no local notes exist for that file path; continuing to annotate still writes to that browser's localStorage until exporting another HTML copy
+   - Mune opens the export/clear menu, and clicking blank page space closes it
+   - Mune shows a 批注图层 section; 新建图层 creates `note2`/custom layers, 设为当前 controls where new notes are saved, and layer checkboxes show/hide matching cards,正文 anchors, connectors, TOC dots, and Markdown export items
+   - Mune defaults export filtering to the `疑问` tag when that tag exists
+   - 导出MD starts with a short说明, HTML filename, export rules, and tag counts
+   - 导出MD can export only notes matching the selected tag(s), including quoted正文, note text, tag-numbered notes, and whiteboard image Markdown
+   - 导出带笔记HTML downloads a new single HTML file that preserves the original page, html-note UI, tags, note layers, annotations, and whiteboard images in an embedded JSON block
+   - opening an exported HTML copy on another browser/computer restores embedded notes when no local notes exist for that file path; continuing to annotate still writes to that browser's localStorage until exporting another HTML copy
+   - selecting across MathJax CHTML or native MathML formulas treats the formula as an atomic annotation target; no `mark` should be inserted inside `mjx-container`, `<math>`, `<semantics>`, `<mrow>`, `<mi>`, `<mo>`, `<mn>`, `<mtext>`, or `<annotation>`
    - background toggles a faint tag-colored background on the marked正文 while preserving dashed underlines
    - 清空标记 asks for confirmation and removes all notes, right-side cards,正文 anchors, and whiteboard images
    - clicking 编辑 opens the full editor; double-clicking a card note edits only the note text inline
@@ -99,6 +100,8 @@ Treat html-note as a theme-aware interaction layer, not a brute-force page rewri
 The html-note UI and theme navigation must never be marked as正文. The script stores a cloned `Range` from the original正文 selection and uses only that range when the user clicks `完成`; it also excludes `.note-popover`, `.note-rail`, connectors, `#TOC`, and `nav[role="doc-toc"]` from text scanning/restoration. This prevents the common regression where repeated comments create blank dashed boxes inside the popover and push the textarea to the right.
 
 Unfinished popovers use preview marks only. Preview marks are removed when the user clicks blank space or chooses a new selection, and are converted to permanent marks only after `完成`.
+
+Formula DOM is atomic. Protect both MathJax CHTML (`.math`, `.MathJax`, `.MJX-TEX`, `mjx-container`) and native MathML (`math`, `semantics`, `mrow`, `mi`, `mo`, `mn`, `mtext`, `annotation`) from text wrapping. If a selection intersects a formula, mark the nearest formula container as a whole block/inline formula and include its TeX/MathML text in the quote/export; never insert `mark.annotation-phrase` inside formula internals.
 
 Tags use exactly five theme colors. New tags take the next unused color; after five tags the UI must refuse creation instead of reusing colors. Existing tag text can be changed by double-clicking a tag button, and saved note cards must update to the new text/color mapping.
 
