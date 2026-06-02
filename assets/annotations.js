@@ -10,6 +10,9 @@
   const exportAll = document.getElementById("annotation-export-all");
   const exportClear = document.getElementById("annotation-export-clear");
   const clearTags = document.getElementById("annotation-clear-tags");
+  const layerList = document.getElementById("annotation-layer-list");
+  const layerAdd = document.getElementById("annotation-layer-add");
+  const exportHtml = document.getElementById("annotation-export-html");
   const bodyBackgroundToggle = document.getElementById("annotation-body-background-toggle");
   const exportDownload = document.getElementById("annotation-export-download");
   const pop = document.getElementById("annotation-popover");
@@ -37,18 +40,23 @@
   const pageId = location.pathname.replace(/[^\w.-]+/g, "-") || "page";
   const storeKey = `huashu-anchored-annotations:v1:${pageId}`;
   const tagKey = `huashu-anchored-annotation-tags:v1:${pageId}`;
+  const layerKey = `huashu-anchored-annotation-layers:v1:${pageId}`;
   const backgroundKey = `huashu-anchored-annotation-background:v1:${pageId}`;
+  const embeddedDataId = "html-note-embedded-data";
+  const defaultLayerId = "layer-note1";
   const palette = ["#15803d", "#d97706", "#2563eb", "#db2777", "#7c3aed"];
   const blockSelector = "p,li,blockquote,figure,table,pre,.math.display,h1,h2,h3,h4,h5,h6";
   const anchorSelector = "[data-annotation-id]";
 
-  let annotations = loadJson(storeKey, []);
-  let tags = normalizeTags(loadJson(tagKey, [
+  const embeddedData = loadEmbeddedData();
+  let annotations = loadJson(storeKey, embeddedData?.annotations || []);
+  let tags = normalizeTags(loadJson(tagKey, embeddedData?.tags || [
     { name: "疑问", color: palette[0] },
     { name: "灵感", color: palette[1] },
     { name: "重点", color: palette[2] },
   ]));
-  annotations = annotations.map(syncAnnotationTags);
+  let layerState = normalizeLayerState(loadJson(layerKey, embeddedData?.layers || null));
+  annotations = annotations.map(syncAnnotationTags).map(syncAnnotationLayer);
   let activeSelection = null;
   let activeRange = null;
   let selectionPreviewId = null;
@@ -69,6 +77,8 @@
   let undoStack = [];
   let redoStack = [];
 
+  captureOriginalMathSources();
+
   function loadJson(key, fallback) {
     try {
       const raw = localStorage.getItem(key);
@@ -78,9 +88,19 @@
     }
   }
 
+  function loadEmbeddedData() {
+    try {
+      const node = document.getElementById(embeddedDataId);
+      return node?.textContent ? JSON.parse(node.textContent) : null;
+    } catch {
+      return null;
+    }
+  }
+
   function saveAll() {
     localStorage.setItem(storeKey, JSON.stringify(annotations));
     localStorage.setItem(tagKey, JSON.stringify(tags));
+    localStorage.setItem(layerKey, JSON.stringify(layerState));
   }
 
   function saveBodyBackground() {
@@ -117,11 +137,132 @@
     return tags.find((tag) => tag.name === name);
   }
 
+  function normalizeLayerState(value) {
+    const sourceLayers = Array.isArray(value?.items) ? value.items : Array.isArray(value) ? value : [];
+    const items = [];
+    const seen = new Set();
+    sourceLayers.forEach((layer, index) => {
+      const id = String(layer?.id || `layer-${Date.now()}-${index}`).trim();
+      if (!id || seen.has(id)) return;
+      seen.add(id);
+      items.push({
+        id,
+        name: String(layer?.name || `note${index + 1}`).trim() || `note${index + 1}`,
+        visible: layer?.visible !== false,
+      });
+    });
+    if (!items.length) items.push({ id: defaultLayerId, name: "note1", visible: true });
+    const activeId = items.some((layer) => layer.id === value?.activeId)
+      ? value.activeId
+      : items[0].id;
+    return { activeId, items };
+  }
+
+  function layerById(id) {
+    return layerState.items.find((layer) => layer.id === id);
+  }
+
+  function activeLayer() {
+    return layerById(layerState.activeId) || layerState.items[0];
+  }
+
+  function isLayerVisible(id) {
+    return layerById(id)?.visible !== false;
+  }
+
+  function visibleAnnotations() {
+    return annotations.filter((annotation) => isLayerVisible(annotation.layerId));
+  }
+
+  function nextLayerName() {
+    let index = layerState.items.length + 1;
+    const names = new Set(layerState.items.map((layer) => layer.name));
+    while (names.has(`note${index}`)) index += 1;
+    return `note${index}`;
+  }
+
+  function setActiveLayer(id) {
+    if (!layerById(id)) return;
+    layerState.activeId = id;
+    if (!isLayerVisible(id)) layerById(id).visible = true;
+    saveAll();
+    renderLayerList();
+    refreshAnnotationVisibility();
+  }
+
+  function refreshAnnotationVisibility() {
+    annotations.forEach((annotation) => {
+      if (!isLayerVisible(annotation.layerId)) unwrapAnnotation(annotation.id);
+    });
+    restoreSelectionMarks();
+    syncAnnotationMarks();
+    renderAnnotations();
+  }
+
+  function renderLayerList() {
+    if (!layerList) return;
+    layerList.innerHTML = "";
+    layerState.items.forEach((layer) => {
+      const row = document.createElement("div");
+      row.className = "annotation-layer-item";
+      const label = document.createElement("label");
+      const visible = document.createElement("input");
+      visible.type = "checkbox";
+      visible.checked = layer.visible !== false;
+      visible.dataset.layerVisible = layer.id;
+      const name = document.createElement("span");
+      name.className = "annotation-layer-name";
+      name.textContent = `${layer.name} (${annotations.filter((annotation) => annotation.layerId === layer.id).length})`;
+      label.append(visible, name);
+      const actions = document.createElement("div");
+      actions.className = "annotation-layer-actions";
+      const current = document.createElement("button");
+      current.type = "button";
+      current.dataset.layerCurrent = layer.id;
+      current.className = layer.id === activeLayer().id ? "annotation-layer-current" : "";
+      current.textContent = layer.id === activeLayer().id ? "当前" : "设为当前";
+      const rename = document.createElement("button");
+      rename.type = "button";
+      rename.dataset.layerRename = layer.id;
+      rename.textContent = "重命名";
+      actions.append(current, rename);
+      row.append(label, actions);
+      layerList.appendChild(row);
+    });
+  }
+
   function syncAnnotationTags(annotation) {
     const synced = (annotation.tags || [])
       .map((tag) => tagByName(tag?.name || tag))
       .filter(Boolean);
     return { ...annotation, tags: synced };
+  }
+
+  function syncAnnotationLayer(annotation) {
+    const layerId = layerById(annotation.layerId)?.id || defaultLayerId;
+    if (!layerById(layerId)) layerState.items.unshift({ id: layerId, name: "note1", visible: true });
+    return { ...annotation, layerId };
+  }
+
+  function captureOriginalMathSources() {
+    main.querySelectorAll(".math.inline,.math.display").forEach((element) => {
+      if (element.dataset.htmlNoteMathSource) return;
+      const source = mathSourceForElement(element);
+      if (source.trim()) element.dataset.htmlNoteMathSource = source;
+    });
+  }
+
+  function mathSourceForElement(element) {
+    const direct = element.querySelector?.("annotation")?.textContent || element.textContent || "";
+    if (direct.trim()) return direct;
+    try {
+      const mathItem = window.MathJax?.startup?.document?.math?.find((item) => element.contains(item.typesetRoot) || item.start?.node === element);
+      const tex = mathItem?.math || "";
+      if (tex) return element.classList.contains("display") ? `\\[${tex}\\]` : `\\(${tex}\\)`;
+    } catch {
+      // Keep export resilient when MathJax internals are unavailable.
+    }
+    return "";
   }
 
   function escapeHtml(value) {
@@ -150,6 +291,11 @@
   function exportFileName() {
     const base = pageTitle().replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, "-").slice(0, 80) || "annotations";
     return `${base}-批注.md`;
+  }
+
+  function exportHtmlFileName() {
+    const base = htmlFileName().replace(/\.html?$/i, "").replace(/[\\/:*?"<>|]+/g, "-").slice(0, 100) || "html-note";
+    return `${base}-with-notes.html`;
   }
 
   function pageY(rect) {
@@ -378,6 +524,256 @@
     return !!range && main.contains(range.commonAncestorContainer) && !isAnnotationUiNode(range.commonAncestorContainer) && !isTocNode(range.commonAncestorContainer);
   }
 
+  function isIgnoredAnchorTextNode(node) {
+    return !node.nodeValue || !!node.parentElement?.closest?.("script,style,.math,.MathJax,.MJX-TEX,.mjx-container,.annotation-rail,.annotation-popover,.annotation-export,#TOC,nav[role='doc-toc'],nav.toc,.toc");
+  }
+
+  function mathContainersInRange(range) {
+    const containers = new Set();
+    main.querySelectorAll(".math, .MathJax, .MJX-TEX, mjx-container").forEach((element) => {
+      try {
+        if (range.intersectsNode(element)) containers.add(element);
+      } catch {
+        // Ignore detached or non-intersectable nodes.
+      }
+    });
+    return Array.from(containers).filter((element, index, all) => {
+      if (element.closest?.(".annotation-popover,.annotation-rail,.annotation-export")) return false;
+      return !all.some((other, otherIndex) => otherIndex !== index && other.contains(element));
+    });
+  }
+
+  function mathIdsFromRange(range) {
+    return mathContainersInRange(range).map((element) => ensureMathId(element)).filter(Boolean);
+  }
+
+  function ensureMathId(element) {
+    if (element.id) return element.id;
+    element.id = `html-note-math-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    return element.id;
+  }
+
+  function mathTextForElement(element) {
+    const source = element.querySelector?.("annotation")?.textContent || element.textContent || "";
+    return compactText(source);
+  }
+
+  function mathElementIndex(element) {
+    return Array.from(main.querySelectorAll(".math, .MathJax, .MJX-TEX, mjx-container")).indexOf(element);
+  }
+
+  function orderedSelectionParts(range) {
+    const parts = rangeTextSlices(range).map(({ node, start, end }) => ({
+      type: "text",
+      top: node.parentElement?.getBoundingClientRect?.().top || 0,
+      left: node.parentElement?.getBoundingClientRect?.().left || 0,
+      text: node.nodeValue.slice(start, end),
+    }));
+    mathContainersInRange(range).forEach((element) => {
+      const rect = element.getBoundingClientRect();
+      parts.push({
+        type: "math",
+        top: rect.top,
+        left: rect.left,
+        text: mathTextForElement(element),
+      });
+    });
+    return parts
+      .filter((part) => compactText(part.text))
+      .sort((a, b) => a.top - b.top || a.left - b.left);
+  }
+
+  function quoteTextFromRange(range) {
+    return orderedSelectionParts(range).map((part) => part.text).join("\n").replace(/\n{3,}/g, "\n\n").trim();
+  }
+
+  function textAnchorSnapshot() {
+    const nodes = [];
+    const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT, {
+      acceptNode(node) {
+        return isIgnoredAnchorTextNode(node) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT;
+      },
+    });
+    let node;
+    while ((node = walker.nextNode())) nodes.push(node);
+    return { nodes, text: nodes.map((item) => item.nodeValue || "").join("") };
+  }
+
+  function compactText(value) {
+    return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function textAnchorForRange(range) {
+    if (!validStoredRange(range)) return null;
+    const snapshot = textAnchorSnapshot();
+    let offset = 0;
+    let start = null;
+    let end = null;
+    snapshot.nodes.forEach((node) => {
+      const value = node.nodeValue || "";
+      const length = value.length;
+      let intersects = false;
+      try {
+        intersects = range.intersectsNode(node);
+      } catch {
+        intersects = false;
+      }
+      if (intersects) {
+        const sliceStart = node === range.startContainer ? range.startOffset : 0;
+        const sliceEnd = node === range.endContainer ? range.endOffset : length;
+        if (sliceEnd > sliceStart) {
+          if (start === null) start = offset + sliceStart;
+          end = offset + sliceEnd;
+        }
+      }
+      offset += length;
+    });
+    if (start === null || end === null || end <= start) return null;
+    const context = 48;
+    return {
+      start,
+      end,
+      quote: snapshot.text.slice(start, end),
+      prefix: snapshot.text.slice(Math.max(0, start - context), start),
+      suffix: snapshot.text.slice(end, end + context),
+    };
+  }
+
+  function textAnchorForSlice(node, start, end) {
+    const snapshot = textAnchorSnapshot();
+    let offset = 0;
+    for (const item of snapshot.nodes) {
+      const length = (item.nodeValue || "").length;
+      if (item === node) {
+        const safeStart = Math.max(0, Math.min(length, start));
+        const safeEnd = Math.max(safeStart, Math.min(length, end));
+        if (safeEnd <= safeStart) return null;
+        const anchorStart = offset + safeStart;
+        const anchorEnd = offset + safeEnd;
+        const context = 48;
+        return {
+          start: anchorStart,
+          end: anchorEnd,
+          quote: snapshot.text.slice(anchorStart, anchorEnd),
+          prefix: snapshot.text.slice(Math.max(0, anchorStart - context), anchorStart),
+          suffix: snapshot.text.slice(anchorEnd, anchorEnd + context),
+        };
+      }
+      offset += length;
+    }
+    return null;
+  }
+
+  function selectionPartsFromRange(range) {
+    if (!validStoredRange(range)) return [];
+    const parts = rangeTextSlices(range).map(({ node, start, end }) => ({
+      type: "text",
+      anchor: textAnchorForSlice(node, start, end),
+      text: node.nodeValue.slice(start, end),
+      top: node.parentElement?.getBoundingClientRect?.().top || 0,
+      left: node.parentElement?.getBoundingClientRect?.().left || 0,
+    }));
+    mathContainersInRange(range).forEach((element) => {
+      const rect = element.getBoundingClientRect();
+      parts.push({
+        type: "math",
+        id: ensureMathId(element),
+        text: mathTextForElement(element),
+        index: mathElementIndex(element),
+        top: rect.top,
+        left: rect.left,
+      });
+    });
+    return parts
+      .filter((part) => compactText(part.text) && (part.type === "math" ? part.id : part.anchor))
+      .sort((a, b) => a.top - b.top || a.left - b.left)
+      .map((part) => {
+        if (part.type === "math") return { type: "math", id: part.id, text: part.text, index: part.index };
+        return { type: "text", anchor: part.anchor, text: part.text };
+      });
+  }
+
+  function rangeFromTextOffsets(snapshot, start, end) {
+    const range = document.createRange();
+    let offset = 0;
+    let started = false;
+    let ended = false;
+    for (const node of snapshot.nodes) {
+      const length = (node.nodeValue || "").length;
+      const nextOffset = offset + length;
+      if (!started && start >= offset && start <= nextOffset) {
+        range.setStart(node, Math.max(0, Math.min(length, start - offset)));
+        started = true;
+      }
+      if (started && end >= offset && end <= nextOffset) {
+        range.setEnd(node, Math.max(0, Math.min(length, end - offset)));
+        ended = true;
+        break;
+      }
+      offset = nextOffset;
+    }
+    return started && ended ? range : null;
+  }
+
+  function textAnchorScore(anchor, snapshot, start, end) {
+    const quote = String(anchor?.quote || "");
+    const actual = snapshot.text.slice(start, end);
+    if (!quote || compactText(actual) !== compactText(quote)) return -1;
+    let score = actual === quote ? 4 : 2;
+    if (anchor.prefix && snapshot.text.slice(Math.max(0, start - anchor.prefix.length), start) === anchor.prefix) score += 1;
+    if (anchor.suffix && snapshot.text.slice(end, end + anchor.suffix.length) === anchor.suffix) score += 1;
+    return score;
+  }
+
+  function rangeForTextAnchor(annotation) {
+    const anchor = annotation.anchor;
+    if (!anchor || typeof anchor.start !== "number" || typeof anchor.end !== "number") return null;
+    const snapshot = textAnchorSnapshot();
+    if (anchor.end <= anchor.start || anchor.start < 0 || anchor.end > snapshot.text.length) return null;
+    const directScore = textAnchorScore(anchor, snapshot, anchor.start, anchor.end);
+    if (directScore >= 2) return rangeFromTextOffsets(snapshot, anchor.start, anchor.end);
+
+    const quote = String(anchor.quote || "");
+    if (!quote) return null;
+    let best = null;
+    let bestScore = -1;
+    let index = snapshot.text.indexOf(quote);
+    while (index !== -1) {
+      const end = index + quote.length;
+      const score = textAnchorScore(anchor, snapshot, index, end);
+      if (score > bestScore) {
+        bestScore = score;
+        best = { start: index, end };
+      }
+      index = snapshot.text.indexOf(quote, index + 1);
+    }
+    return best ? rangeFromTextOffsets(snapshot, best.start, best.end) : null;
+  }
+
+  function mathElementForPart(part) {
+    if (part?.id) {
+      const element = document.getElementById(part.id);
+      if (element?.matches?.(".math, .MathJax, .MJX-TEX, mjx-container")) return element;
+    }
+    const text = compactText(part?.text);
+    if (!text) return null;
+    const elements = Array.from(main.querySelectorAll(".math, .MathJax, .MJX-TEX, mjx-container"));
+    if (Number.isInteger(part?.index)) {
+      const indexed = elements[part.index];
+      if (indexed && compactText(mathTextForElement(indexed)) === text) return indexed;
+    }
+    return elements.find((element) => compactText(mathTextForElement(element)) === text) || null;
+  }
+
+  function markMathElement(element, annotation) {
+    if (!element || isAnnotationUiNode(element) || isTocNode(element)) return false;
+    if (!element.matches?.(".math, .MathJax, .MJX-TEX, mjx-container")) return false;
+    element.dataset.annotationId = annotation.id;
+    element.classList.add("annotation-block");
+    setMarkColors(element, annotation);
+    return true;
+  }
+
   function withSuppressedSelection(callback) {
     suppressSelection = true;
     try {
@@ -394,7 +790,7 @@
     const first = rects[0] || range.getBoundingClientRect();
     const all = range.getBoundingClientRect();
     const block = closestBlock(range.commonAncestorContainer);
-    const text = range.toString();
+    const text = quoteTextFromRange(range) || range.toString();
     const blockTag = block?.tagName || "";
     return {
       id: `ann-${Date.now()}-${Math.random().toString(16).slice(2)}`,
@@ -404,6 +800,9 @@
       right: all.right + window.scrollX,
       height: all.height || first.height || 20,
       blocky: ["FIGURE", "TABLE", "PRE"].includes(blockTag) || block?.classList?.contains("math"),
+      anchor: textAnchorForRange(range),
+      mathIds: mathIdsFromRange(range),
+      parts: selectionPartsFromRange(range),
     };
   }
 
@@ -548,7 +947,7 @@
   function syncAnnotationMarks() {
     document.body.dataset.annotationBodyBackground = String(bodyBackgroundOn);
     if (bodyBackgroundToggle) bodyBackgroundToggle.setAttribute("aria-pressed", String(bodyBackgroundOn));
-    annotations.forEach((annotation) => {
+    visibleAnnotations().forEach((annotation) => {
       document.querySelectorAll(`[data-annotation-id="${CSS.escape(annotation.id)}"]`).forEach((mark) => {
         setMarkColors(mark, annotation);
       });
@@ -758,6 +1157,7 @@
       annotation.note = noteInput.value.trim();
       annotation.tags = selectedTagObjects();
       annotation.board = boardData;
+      annotation.anchor = annotation.anchor || textAnchorForRange(rangeFromExistingMarks(annotation.id));
       annotation.updatedAt = new Date().toISOString();
       setEditingMark(annotation.id, false);
     } else {
@@ -769,7 +1169,11 @@
         right: activeSelection.right,
         height: activeSelection.height,
         blocky: activeSelection.blocky,
-        segments: activeSelection.segments || [],
+        segments: validStoredRange(activeRange) ? segmentTextsFromRange(activeRange.cloneRange()) : (activeSelection.segments || []),
+        anchor: validStoredRange(activeRange) ? textAnchorForRange(activeRange.cloneRange()) : activeSelection.anchor,
+        mathIds: validStoredRange(activeRange) ? mathIdsFromRange(activeRange.cloneRange()) : (activeSelection.mathIds || []),
+        parts: activeSelection.parts || (validStoredRange(activeRange) ? selectionPartsFromRange(activeRange.cloneRange()) : []),
+        layerId: activeLayer().id,
         note: noteInput.value.trim(),
         tags: selectedTagObjects(),
         board: boardData,
@@ -786,13 +1190,15 @@
   }
 
   function clearAllAnnotations() {
-    if (!annotations.length) {
+    const visible = visibleAnnotations();
+    if (!visible.length) {
       window.alert("当前没有批注。");
       return;
     }
-    if (!window.confirm("确定清空所有批注吗？这会删除右侧批注、正文下划线和白板图案。")) return;
-    annotations.forEach((annotation) => unwrapAnnotation(annotation.id));
-    annotations = [];
+    if (!window.confirm("确定清空当前可见图层的批注吗？隐藏图层中的批注会保留。")) return;
+    const visibleIds = new Set(visible.map((annotation) => annotation.id));
+    visible.forEach((annotation) => unwrapAnnotation(annotation.id));
+    annotations = annotations.filter((annotation) => !visibleIds.has(annotation.id));
     selectedTags.clear();
     closePopover();
     saveAll();
@@ -806,7 +1212,7 @@
     cardLowerTimers.clear();
     document.querySelectorAll(".annotation-connector").forEach((el) => el.remove());
     rails.forEach((item) => { item.innerHTML = ""; });
-    const sorted = annotations
+    const sorted = visibleAnnotations()
       .slice()
       .sort((a, b) => anchorRect(a).top - anchorRect(b).top);
     const layout = availableRails();
@@ -934,7 +1340,7 @@
     const toc = document.querySelector("#TOC, nav[role='doc-toc'], nav.toc, .toc");
     if (!toc) return;
     const grouped = new Map();
-    annotations.forEach((annotation) => {
+    visibleAnnotations().forEach((annotation) => {
       const heading = headingForAnnotationInToc(annotation, toc);
       if (!heading?.id) return;
       if (!grouped.has(heading.id)) grouped.set(heading.id, []);
@@ -1003,7 +1409,7 @@
       const heading = headingForAnnotation(annotation);
       return heading ? heading.getBoundingClientRect().top + window.scrollY : annotation.top || 0;
     };
-    const items = annotations.slice().sort((a, b) => headingTop(a) - headingTop(b) || orderOf(a) - orderOf(b) || (a.top || 0) - (b.top || 0));
+    const items = visibleAnnotations().slice().sort((a, b) => headingTop(a) - headingTop(b) || orderOf(a) - orderOf(b) || (a.top || 0) - (b.top || 0));
     if (!selected.size) return items;
     return items.filter((annotation) => (annotation.tags || []).some((tag) => selected.has(tag.name)));
   }
@@ -1091,11 +1497,15 @@
   }
 
   function downloadMarkdown(text) {
-    const blob = new Blob([text], { type: "text/markdown;charset=utf-8" });
+    downloadFile(text, exportFileName(), "text/markdown;charset=utf-8");
+  }
+
+  function downloadFile(text, fileName, type) {
+    const blob = new Blob([text], { type });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = exportFileName();
+    link.download = fileName;
     document.body.appendChild(link);
     link.click();
     link.remove();
@@ -1109,6 +1519,61 @@
       return;
     }
     downloadMarkdown(buildAnnotationsMarkdown(items));
+  }
+
+  function embeddedPayload() {
+    return {
+      version: 2,
+      exportedAt: new Date().toISOString(),
+      sourcePath: location.pathname,
+      annotations,
+      tags,
+      layers: layerState,
+    };
+  }
+
+  function htmlWithEmbeddedNotes() {
+    captureOriginalMathSources();
+    const doc = document.documentElement.cloneNode(true);
+    doc.querySelectorAll(".annotation-connector").forEach((node) => node.remove());
+    doc.querySelectorAll(".annotation-rail").forEach((node) => { node.innerHTML = ""; });
+    doc.querySelectorAll(".annotation-export-panel").forEach((node) => { node.hidden = true; });
+    doc.querySelectorAll(".annotation-popover").forEach((node) => { node.dataset.open = "false"; });
+    doc.querySelectorAll("[data-annotation-id],[data-annotation-preview-id]").forEach((node) => {
+      if (node.tagName === "MARK") {
+        node.replaceWith(...node.childNodes);
+        return;
+      }
+      node.classList.remove("annotation-block", "annotation-phrase", "annotation-active", "annotation-editing", "annotation-preview");
+      delete node.dataset.annotationId;
+      delete node.dataset.annotationPreviewId;
+    });
+    doc.querySelectorAll(".math.inline,.math.display").forEach((node) => {
+      const source = node.dataset.htmlNoteMathSource || node.querySelector?.("annotation")?.textContent || "";
+      if (!source.trim()) return;
+      node.innerHTML = "";
+      node.textContent = source;
+      node.removeAttribute("tabindex");
+      node.classList.remove("annotation-block", "annotation-phrase", "annotation-active", "annotation-editing", "annotation-preview");
+      delete node.dataset.annotationId;
+      delete node.dataset.annotationPreviewId;
+    });
+    const oldData = doc.querySelector(`#${embeddedDataId}`);
+    if (oldData) oldData.remove();
+    const data = document.createElement("script");
+    data.type = "application/json";
+    data.id = embeddedDataId;
+    data.textContent = JSON.stringify(embeddedPayload());
+    const body = doc.querySelector("body") || doc;
+    const marker = Array.from(body.childNodes).find((node) => node.nodeType === Node.COMMENT_NODE && node.nodeValue.trim() === "html-note:start");
+    if (marker) body.insertBefore(data, marker);
+    else body.appendChild(data);
+    return `<!DOCTYPE html>\n${doc.outerHTML}`;
+  }
+
+  function exportAnnotatedHtml() {
+    saveAll();
+    downloadFile(htmlWithEmbeddedNotes(), exportHtmlFileName(), "text/html;charset=utf-8");
   }
 
   function tagDotBackground(colors) {
@@ -1131,10 +1596,12 @@
         preview.classList.remove("annotation-preview");
         setMarkColors(preview, annotation);
       });
+      markMathContainersForAnnotation(annotation);
       return;
     }
     if (validStoredRange(activeRange)) wrapRange(activeRange.cloneRange(), annotation);
     else markExistingElement(nearestBlockForAnnotation(annotation), annotation);
+    markMathContainersForAnnotation(annotation);
   }
 
   function rangeTextSlices(range) {
@@ -1146,7 +1613,7 @@
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         if (!node.nodeValue) return NodeFilter.FILTER_REJECT;
-        if (node.parentElement?.closest?.("mark,script,style,.annotation-rail,.annotation-popover,.annotation-export,#TOC,nav[role='doc-toc'],nav.toc,.toc")) return NodeFilter.FILTER_REJECT;
+        if (node.parentElement?.closest?.("mark,script,style,.math,.MathJax,.MJX-TEX,.mjx-container,.annotation-rail,.annotation-popover,.annotation-export,#TOC,nav[role='doc-toc'],nav.toc,.toc")) return NodeFilter.FILTER_REJECT;
         try {
           return range.intersectsNode(node) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT;
         } catch {
@@ -1166,7 +1633,12 @@
   function wrapTextSlices(range, id, className, dataName) {
     const slices = rangeTextSlices(range);
     const annotation = annotations.find((item) => item.id === id);
-    slices.reverse().forEach(({ node, start, end }) => {
+    wrapTextSliceItems(slices, id, className, dataName, annotation);
+    return slices.length > 0;
+  }
+
+  function wrapTextSliceItems(slices, id, className, dataName, annotation = null) {
+    slices.slice().reverse().forEach(({ node, start, end }) => {
       const mark = document.createElement("mark");
       mark.dataset[dataName] = id;
       mark.className = className;
@@ -1176,7 +1648,6 @@
       piece.setEnd(node, end);
       piece.surroundContents(mark);
     });
-    return slices.length > 0;
   }
 
   function segmentTextsFromRange(range) {
@@ -1184,25 +1655,62 @@
   }
 
   function wrapRange(range, annotation) {
-    wrapTextSlices(range, annotation.id, "annotation-phrase", "annotationId");
+    const didWrap = wrapTextSlices(range, annotation.id, "annotation-phrase", "annotationId");
+    markMathContainersForAnnotation(annotation);
+    return didWrap || (annotation.mathIds || []).some((id) => document.getElementById(id)?.dataset?.annotationId === annotation.id);
+  }
+
+  function rangeFromExistingMarks(id) {
+    const marks = Array.from(document.querySelectorAll(`[data-annotation-id="${CSS.escape(id)}"]`));
+    if (!marks.length) return null;
+    const range = document.createRange();
+    range.setStartBefore(marks[0]);
+    range.setEndAfter(marks[marks.length - 1]);
+    return validStoredRange(range) ? range : null;
   }
 
   function addSelectionPreview(meta) {
     if (!validStoredRange(activeRange)) return;
+    const previewRange = activeRange.cloneRange();
     withSuppressedSelection(() => {
-      wrapTextSlices(activeRange.cloneRange(), meta.id, "annotation-phrase annotation-preview", "annotationPreviewId");
+      wrapTextSlices(previewRange, meta.id, "annotation-phrase annotation-preview", "annotationPreviewId");
+      mathContainersInRange(previewRange).forEach((element) => {
+        element.dataset.annotationPreviewId = meta.id;
+        element.classList.add("annotation-block", "annotation-preview");
+        setMarkColors(element, meta);
+      });
     });
-    activeRange = null;
   }
 
   function clearSelectionPreview() {
     document.querySelectorAll("[data-annotation-preview-id]").forEach((mark) => {
-      mark.replaceWith(...mark.childNodes);
+      if (mark.tagName === "MARK") {
+        mark.replaceWith(...mark.childNodes);
+        return;
+      }
+      mark.classList.remove("annotation-block", "annotation-preview");
+      delete mark.dataset.annotationPreviewId;
     });
   }
 
+  function markMathContainersForAnnotation(annotation) {
+    (annotation.mathIds || []).forEach((id) => markMathElement(document.getElementById(id), annotation));
+  }
+
+  function inferMathIdsForAnnotation(annotation) {
+    if (Array.isArray(annotation.mathIds) && annotation.mathIds.length) return annotation.mathIds;
+    const text = compactText(annotation.text);
+    if (!text) return [];
+    return Array.from(main.querySelectorAll(".math[id], .MathJax[id], .MJX-TEX[id], mjx-container[id]"))
+      .filter((element) => {
+        const mathText = compactText(element.textContent);
+        return mathText && (text.includes(mathText) || mathText.includes(text));
+      })
+      .map((element) => element.id);
+  }
+
   function markExistingElement(element, annotation) {
-    if (!element || isAnnotationUiNode(element) || isTocNode(element) || element.closest?.(`mark,script,style,${anchorSelector}`)) return false;
+    if (!element || isAnnotationUiNode(element) || isTocNode(element) || element.closest?.(`mark,script,style,.math,.MathJax,.MJX-TEX,.mjx-container,${anchorSelector}`)) return false;
     element.dataset.annotationId = annotation.id;
     element.classList.add(annotation.blocky ? "annotation-block" : "annotation-phrase");
     setMarkColors(element, annotation);
@@ -1231,15 +1739,42 @@
     return bestDistance < 110 ? best : null;
   }
 
+  function restoreAnnotationParts(annotation) {
+    if (!Array.isArray(annotation.parts) || !annotation.parts.length) return false;
+    let restored = false;
+    const textSlices = [];
+    annotation.parts.forEach((part) => {
+      if (part?.type === "text" && part.anchor) {
+        const range = rangeForTextAnchor({ anchor: part.anchor });
+        if (range) textSlices.push(...rangeTextSlices(range));
+      }
+      if (part?.type === "math") {
+        restored = markMathElement(mathElementForPart(part), annotation) || restored;
+      }
+    });
+    if (textSlices.length) {
+      wrapTextSliceItems(textSlices, annotation.id, "annotation-phrase", "annotationId", annotation);
+      restored = true;
+    }
+    return restored;
+  }
+
   function restoreSelectionMarks() {
     annotations.forEach((annotation) => {
+      if (!isLayerVisible(annotation.layerId)) return;
       if (document.querySelector(`[data-annotation-id="${CSS.escape(annotation.id)}"]`)) return;
+      annotation.mathIds = inferMathIdsForAnnotation(annotation);
+      if (restoreAnnotationParts(annotation)) return;
+      markMathContainersForAnnotation(annotation);
+      const anchoredRange = rangeForTextAnchor(annotation);
+      if (anchoredRange && wrapRange(anchoredRange, annotation)) return;
       if (Array.isArray(annotation.segments) && annotation.segments.length) {
         let restored = false;
         annotation.segments.forEach((segment) => {
           const needlePart = String(segment || "");
           if (!needlePart.trim()) return;
-          const range = rangeForExactText(needlePart);
+          if (document.querySelector(`[data-annotation-id="${CSS.escape(annotation.id)}"]`)) return;
+          const range = rangeForExactText(needlePart, annotation);
           if (range) restored = wrapTextSlices(range, annotation.id, "annotation-phrase", "annotationId") || restored;
         });
         if (restored) return;
@@ -1250,22 +1785,11 @@
         markExistingElement(nearestBlockForAnnotation(annotation), annotation);
         return;
       }
-      const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT, {
-        acceptNode(node) {
-          if (!node.nodeValue.includes(needle)) return NodeFilter.FILTER_REJECT;
-          if (node.parentElement?.closest?.("mark,script,style,.annotation-rail,.annotation-popover,.annotation-export,#TOC,nav[role='doc-toc'],nav.toc,.toc")) return NodeFilter.FILTER_REJECT;
-          return NodeFilter.FILTER_ACCEPT;
-        },
-      });
-      const node = walker.nextNode();
-      if (!node) {
+      const range = rangeForExactText(needle, annotation);
+      if (!range) {
         markExistingElement(nearestBlockForAnnotation(annotation), annotation);
         return;
       }
-      const offset = node.nodeValue.indexOf(needle);
-      const range = document.createRange();
-      range.setStart(node, offset);
-      range.setEnd(node, offset + needle.length);
       wrapRange(range, annotation);
       if (!document.querySelector(`[data-annotation-id="${CSS.escape(annotation.id)}"]`)) {
         markExistingElement(nearestBlockForAnnotation(annotation), annotation);
@@ -1273,20 +1797,39 @@
     });
   }
 
-  function rangeForExactText(needle) {
+  function rangeForExactText(needle, annotation = null) {
+    let best = null;
+    let bestDistance = Infinity;
     const walker = document.createTreeWalker(main, NodeFilter.SHOW_TEXT, {
       acceptNode(node) {
         if (!node.nodeValue.includes(needle)) return NodeFilter.FILTER_REJECT;
-        if (node.parentElement?.closest?.("mark,script,style,.annotation-rail,.annotation-popover,.annotation-export,#TOC,nav[role='doc-toc'],nav.toc,.toc")) return NodeFilter.FILTER_REJECT;
+        if (isIgnoredAnchorTextNode(node)) return NodeFilter.FILTER_REJECT;
         return NodeFilter.FILTER_ACCEPT;
       },
     });
-    const node = walker.nextNode();
-    if (!node) return null;
-    const offset = node.nodeValue.indexOf(needle);
+    let node;
+    while ((node = walker.nextNode())) {
+      let offset = node.nodeValue.indexOf(needle);
+      while (offset !== -1) {
+        let distance = 0;
+        if (annotation && typeof annotation.top === "number") {
+          const test = document.createRange();
+          test.setStart(node, offset);
+          test.setEnd(node, offset + needle.length);
+          const rect = test.getBoundingClientRect();
+          distance = Math.abs((rect.top + window.scrollY) - annotation.top);
+        }
+        if (!best || distance < bestDistance) {
+          best = { node, offset };
+          bestDistance = distance;
+        }
+        offset = node.nodeValue.indexOf(needle, offset + 1);
+      }
+    }
+    if (!best) return null;
     const range = document.createRange();
-    range.setStart(node, offset);
-    range.setEnd(node, offset + needle.length);
+    range.setStart(best.node, best.offset);
+    range.setEnd(best.node, best.offset + needle.length);
     return range;
   }
 
@@ -1327,6 +1870,7 @@
 
   exportOpen.addEventListener("click", () => {
     renderExportTags();
+    renderLayerList();
     exportPanel.hidden = !exportPanel.hidden;
   });
   exportClose?.addEventListener("click", () => {
@@ -1344,6 +1888,51 @@
   });
   clearTags?.addEventListener("click", clearAllAnnotations);
   exportDownload?.addEventListener("click", exportAnnotationsMarkdown);
+  exportHtml?.addEventListener("click", exportAnnotatedHtml);
+  layerAdd?.addEventListener("click", () => {
+    const name = window.prompt("新图层名称", nextLayerName());
+    const cleanName = String(name || "").trim();
+    if (!cleanName) return;
+    const layer = {
+      id: `layer-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      name: cleanName,
+      visible: true,
+    };
+    layerState.items.push(layer);
+    layerState.activeId = layer.id;
+    saveAll();
+    renderLayerList();
+    refreshAnnotationVisibility();
+  });
+  layerList?.addEventListener("change", (event) => {
+    const id = event.target?.dataset?.layerVisible;
+    const layer = id ? layerById(id) : null;
+    if (!layer) return;
+    layer.visible = event.target.checked;
+    if (!layer.visible && layer.id === activeLayer().id) {
+      const nextVisible = layerState.items.find((item) => item.visible !== false);
+      if (nextVisible) layerState.activeId = nextVisible.id;
+      else layer.visible = true;
+    }
+    saveAll();
+    renderLayerList();
+    refreshAnnotationVisibility();
+  });
+  layerList?.addEventListener("click", (event) => {
+    const currentId = event.target?.dataset?.layerCurrent;
+    const renameId = event.target?.dataset?.layerRename;
+    if (currentId) setActiveLayer(currentId);
+    if (renameId) {
+      const layer = layerById(renameId);
+      if (!layer) return;
+      const name = window.prompt("图层名称", layer.name);
+      const cleanName = String(name || "").trim();
+      if (!cleanName) return;
+      layer.name = cleanName;
+      saveAll();
+      renderLayerList();
+    }
+  });
   bodyBackgroundToggle?.addEventListener("click", () => {
     bodyBackgroundOn = !bodyBackgroundOn;
     saveBodyBackground();
@@ -1561,5 +2150,6 @@
   restoreSelectionMarks();
   syncAnnotationMarks();
   renderExportTags();
+  renderLayerList();
   renderAnnotations();
 })();

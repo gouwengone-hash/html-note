@@ -9,11 +9,19 @@
       <button type="button" id="annotation-export-close">关闭</button>
     </header>
     <p>默认导出疑问标签；可按标签筛选。</p>
+    <section class="annotation-layer-panel" aria-label="批注图层">
+      <div class="annotation-panel-title">
+        <span>批注图层</span>
+        <button type="button" id="annotation-layer-add">新建图层</button>
+      </div>
+      <div class="annotation-layer-list" id="annotation-layer-list"></div>
+    </section>
     <div class="annotation-export-tags" id="annotation-export-tags"></div>
     <div class="row annotation-export-actions">
       <button type="button" id="annotation-export-all">全选标签</button>
       <button type="button" id="annotation-export-clear">清空标签</button>
       <button type="button" id="annotation-export-download">导出批注</button>
+      <button type="button" id="annotation-export-html">导出带笔记HTML</button>
       <button type="button" id="annotation-clear-tags">清空批注</button>
     </div>
   </div>

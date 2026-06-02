@@ -1,11 +1,11 @@
 ---
 name: html-note
-description: Mark up local HTML reading pages with a theme-aware browser-local note layer, tags, side cards, TOC markers, drawing boards, and Markdown export. Use when the user wants to annotate or mark an HTML file, preserve the source HTML theme/layout, store notes locally, or export notes/marks to Markdown.
+description: Mark up local HTML reading pages with theme-aware browser-local note layers, tags, side cards, TOC markers, drawing boards, Markdown export, and portable single-file HTML export. Use when the user wants to annotate or mark an HTML file, preserve the source HTML theme/layout, store notes locally, manage multiple note layers, or export notes/marks to Markdown/HTML.
 ---
 
 # html-note
 
-Use this skill when the user wants to mark up an HTML file locally, store notes in the browser, and export marks/notes to Markdown:
+Use this skill when the user wants to mark up an HTML file locally, store notes in the browser, manage multiple note layers, and export marks/notes to Markdown or a portable HTML copy:
 
 - select text in the article and create a mark/note
 - show a temporary dashed anchor while the note popover is open
@@ -16,6 +16,8 @@ Use this skill when the user wants to mark up an HTML file locally, store notes 
 - switch the note editor to a whiteboard with pen, line, arrow, rectangle, circle, triangle, eraser, undo, redo, and image paste/upload
 - edit/copy/delete existing cards
 - export marks as Markdown, optionally filtered by selected tags, including a file/rules/statistics preface, quoted source text, tag-numbered notes, and embedded whiteboard images
+- create multiple note layers such as `note1` and `note2`, choose the active layer for new annotations, and show/hide layers independently
+- export a single-file HTML copy with embedded annotation data so another browser or computer can restore the same note layers without the original `localStorage`
 - show faint dashed anchors in the正文 and highlight them when hovering cards
 - add same-color circular markers after matching TOC headings
 - if a selected heading is not present in the TOC, attach the marker to the nearest preceding heading that is present in the TOC
@@ -59,10 +61,13 @@ This uses `huashu-md-html` with the `interactive` theme by default. Override wit
    - selecting across paragraphs marks each text segment without moving or wrapping paragraph blocks
    - hover over a card deepens the card and highlights the正文 anchor
    - hovering a right-side card brings it to the top with only a slight movement, then restores it when the pointer leaves
-   - Mune opens the export/clear menu, and clicking blank page space closes it
-   - Mune defaults export filtering to the `疑问` tag when that tag exists
-   - 导出MD starts with a short说明, HTML filename, export rules, and tag counts
-   - 导出MD can export only notes matching the selected tag(s), including quoted正文, note text, tag-numbered notes, and whiteboard image Markdown
+- Mune opens the export/clear menu, and clicking blank page space closes it
+- Mune shows a 批注图层 section; 新建图层 creates `note2`/custom layers, 设为当前 controls where new notes are saved, and layer checkboxes show/hide matching cards,正文 anchors, connectors, TOC dots, and Markdown export items
+- Mune defaults export filtering to the `疑问` tag when that tag exists
+- 导出MD starts with a short说明, HTML filename, export rules, and tag counts
+- 导出MD can export only notes matching the selected tag(s), including quoted正文, note text, tag-numbered notes, and whiteboard image Markdown
+- 导出带笔记HTML downloads a new single HTML file that preserves the original page, html-note UI, tags, note layers, annotations, and whiteboard images in an embedded JSON block
+- opening an exported HTML copy on another browser/computer restores embedded notes when no local notes exist for that file path; continuing to annotate still writes to that browser's localStorage until exporting another HTML copy
    - background toggles a faint tag-colored background on the marked正文 while preserving dashed underlines
    - 清空标记 asks for confirmation and removes all notes, right-side cards,正文 anchors, and whiteboard images
    - clicking 编辑 opens the full editor; double-clicking a card note edits only the note text inline
@@ -97,6 +102,8 @@ Unfinished popovers use preview marks only. Preview marks are removed when the u
 
 Tags use exactly five theme colors. New tags take the next unused color; after five tags the UI must refuse creation instead of reusing colors. Existing tag text can be changed by double-clicking a tag button, and saved note cards must update to the new text/color mapping.
 
+Note layers are metadata around the existing annotation records. Legacy single-layer annotations must migrate into `note1`. New annotations are assigned to the active layer. Hiding a layer should remove its正文 anchors/cards/connectors/TOC dots from the view without deleting the data, and showing it should restore marks from saved anchors.
+
 ## Output Contract
 
 The injector edits the HTML file in place by default. It inserts one managed block near the end of `<body>` marked with:
@@ -108,10 +115,17 @@ Re-running the injector replaces the managed block instead of duplicating it.
 
 Re-running the injector must not change parent/child relationships of theme-owned nodes such as `body > nav#TOC` or `main.document-body`.
 
+The portable HTML exporter writes annotation data into a hidden JSON script with:
+
+- `id="html-note-embedded-data"`
+- `type="application/json"`
+
+Do not remove the managed html-note UI/scripts when exporting; strip only runtime marks/connectors/cards and let the script restore visible layers when the exported file is opened.
+
 ## Notes
 
-- This is a browser-local html-note layer, not a server database. Data is saved under a `localStorage` key scoped to `location.pathname`.
-- For portable archival, export the browser localStorage separately or build a future exporter.
+- This is a browser-local html-note layer system, not a server database. Data is saved under `localStorage` keys scoped to `location.pathname`.
+- For portable archival/sharing, use 导出带笔记HTML. The exported copy is still a single HTML file, but later edits in another browser stay local until that user exports another copy.
 - Prefer the narrowest reading content root available: `main.document-body`, `article`, then `body`. Never treat theme chrome such as TOC/sidebar/header controls as the primary content root.
 
 
