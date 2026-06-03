@@ -12,12 +12,18 @@
   const overviewClose = document.getElementById("annotation-overview-close");
   const overviewText = document.getElementById("annotation-overview-text");
   const saveHtml = document.getElementById("annotation-save-html");
+  const saveToasts = document.getElementById("annotation-save-toasts");
   const exportTags = document.getElementById("annotation-export-tags");
   const exportAll = document.getElementById("annotation-export-all");
   const exportClear = document.getElementById("annotation-export-clear");
   const clearTags = document.getElementById("annotation-clear-tags");
   const layerList = document.getElementById("annotation-layer-list");
   const layerAdd = document.getElementById("annotation-layer-add");
+  const layerConfirm = document.getElementById("annotation-layer-confirm");
+  const layerDialogTitle = document.getElementById("annotation-layer-dialog-title");
+  const layerNameInput = document.getElementById("annotation-layer-name-input");
+  const layerDeleteCancel = document.getElementById("annotation-layer-delete-cancel");
+  const layerDeleteConfirm = document.getElementById("annotation-layer-delete-confirm");
   const exportHtml = document.getElementById("annotation-export-html");
   const bodyBackgroundToggle = document.getElementById("annotation-body-background-toggle");
   const exportDownload = document.getElementById("annotation-export-download");
@@ -79,6 +85,10 @@
   let suppressSelection = false;
   let exportMenuTimer = 0;
   let overviewDockTimer = 0;
+  let noteAutosaveTimer = 0;
+  let pendingLayerDeleteId = "";
+  let layerDialogMode = "";
+  let editingLayerId = "";
   const cardLowerTimers = new Map();
   let cardZIndex = 80;
   let bodyBackgroundOn = loadJson(backgroundKey, false) === true;
@@ -121,6 +131,15 @@
   function saveOverviewNote() {
     overviewNote = normalizeOverviewNote(overviewText ? overviewText.value : overviewNote);
     localStorage.setItem(overviewKey, JSON.stringify(overviewNote));
+  }
+
+  function showSaveToast(message) {
+    if (!saveToasts) return;
+    const toast = document.createElement("span");
+    toast.className = "annotation-save-toast";
+    toast.textContent = message;
+    saveToasts.appendChild(toast);
+    window.setTimeout(() => toast.remove(), 1300);
   }
 
   function saveBodyBackground() {
@@ -223,6 +242,118 @@
     renderAnnotations();
   }
 
+  function layerAnnotationCount(id) {
+    return annotations.filter((annotation) => annotation.layerId === id).length;
+  }
+
+  function closeLayerDeleteConfirm() {
+    pendingLayerDeleteId = "";
+    editingLayerId = "";
+    layerDialogMode = "";
+    if (layerConfirm) layerConfirm.hidden = true;
+    if (layerNameInput) {
+      layerNameInput.hidden = true;
+      layerNameInput.value = "";
+    }
+    if (layerDeleteConfirm) layerDeleteConfirm.textContent = "delete";
+  }
+
+  function openLayerDeleteConfirm(id) {
+    if (!layerById(id)) return;
+    pendingLayerDeleteId = id;
+    layerDialogMode = "delete";
+    if (layerDialogTitle) layerDialogTitle.textContent = "里面有批注，确认是否删除";
+    if (layerNameInput) layerNameInput.hidden = true;
+    if (layerDeleteConfirm) layerDeleteConfirm.textContent = "delete";
+    if (layerConfirm) layerConfirm.hidden = false;
+  }
+
+  function createLayer(name) {
+    const cleanName = String(name || "").trim();
+    if (!cleanName) return false;
+    const layer = {
+      id: `layer-${Date.now()}-${Math.random().toString(16).slice(2)}`,
+      name: cleanName,
+      visible: true,
+    };
+    layerState.items.push(layer);
+    layerState.activeId = layer.id;
+    saveAll();
+    renderLayerList();
+    refreshAnnotationVisibility();
+    return true;
+  }
+
+  function renameLayer(id, name) {
+    const layer = layerById(id);
+    const cleanName = String(name || "").trim();
+    if (!layer || !cleanName) return false;
+    layer.name = cleanName;
+    saveAll();
+    renderLayerList();
+    return true;
+  }
+
+  function openLayerNameDialog(mode, id = "") {
+    layerDialogMode = mode;
+    editingLayerId = id;
+    pendingLayerDeleteId = "";
+    const currentName = mode === "rename" ? layerById(id)?.name : nextLayerName();
+    if (layerDialogTitle) layerDialogTitle.textContent = mode === "rename" ? "Group name" : "New group name";
+    if (layerNameInput) {
+      layerNameInput.hidden = false;
+      layerNameInput.value = currentName || "";
+    }
+    if (layerDeleteConfirm) layerDeleteConfirm.textContent = mode === "rename" ? "save" : "create";
+    if (layerConfirm) layerConfirm.hidden = false;
+    window.setTimeout(() => {
+      layerNameInput?.focus();
+      layerNameInput?.select();
+    }, 0);
+  }
+
+  function submitLayerDialog() {
+    if (layerDialogMode === "delete") {
+      if (pendingLayerDeleteId) removeLayer(pendingLayerDeleteId);
+      return;
+    }
+    const name = layerNameInput?.value || "";
+    const ok = layerDialogMode === "rename"
+      ? renameLayer(editingLayerId, name)
+      : createLayer(name);
+    if (ok) closeLayerDeleteConfirm();
+  }
+
+  function removeLayer(id) {
+    const layer = layerById(id);
+    if (!layer) return;
+    const removedIds = new Set(annotations.filter((annotation) => annotation.layerId === id).map((annotation) => annotation.id));
+    removedIds.forEach(unwrapAnnotation);
+    annotations = annotations.filter((annotation) => annotation.layerId !== id);
+    layerState.items = layerState.items.filter((item) => item.id !== id);
+    if (!layerState.items.length) {
+      layerState.items.push({ id: defaultLayerId, name: "note1", visible: true });
+    }
+    if (!layerById(layerState.activeId)) {
+      layerState.activeId = (layerState.items.find((item) => item.visible !== false) || layerState.items[0]).id;
+    }
+    saveAll();
+    closePopover();
+    closeLayerDeleteConfirm();
+    renderLayerList();
+    renderExportTags();
+    refreshAnnotationVisibility();
+  }
+
+  function requestLayerDelete(id) {
+    if (!layerById(id)) return;
+    if (layerAnnotationCount(id) > 0) {
+      openLayerDeleteConfirm(id);
+      return;
+    }
+    removeLayer(id);
+  }
+
   function renderLayerList() {
     if (!layerList) return;
     layerList.innerHTML = "";
@@ -251,7 +382,11 @@
       rename.type = "button";
       rename.dataset.layerRename = layer.id;
       rename.textContent = "rename";
-      actions.append(rename);
+      const remove = document.createElement("button");
+      remove.type = "button";
+      remove.dataset.layerDelete = layer.id;
+      remove.textContent = "delete";
+      actions.append(rename, remove);
       row.append(label, name, actions);
       layerList.appendChild(row);
     });
@@ -307,11 +442,23 @@
 
   function markdownQuote(value) {
     const text = escapeMarkdown(value);
-    return text ? text.split("\n").map((line) => `> ${line}`).join("\n") : "> ";
+    let fence = "```";
+    while (text.includes(fence)) fence += "`";
+    return [
+      "**原文引用：**",
+      "",
+      `${fence}text`,
+      text,
+      fence,
+    ].join("\n");
   }
 
   function cleanTitle(value) {
     return String(value || "").replace(/\s+/g, " ").trim();
+  }
+
+  function cleanTitleText(value) {
+    return cleanTitle(value);
   }
 
   function pageTitle() {
@@ -448,6 +595,26 @@
     ctx.restore();
   }
 
+  function editableSelectionText() {
+    const element = document.activeElement;
+    if (!element || !element.matches?.("textarea,input[type='text']")) return "";
+    const start = Number.isInteger(element.selectionStart) ? element.selectionStart : 0;
+    const end = Number.isInteger(element.selectionEnd) ? element.selectionEnd : start;
+    return start === end ? "" : String(element.value || "").slice(start, end);
+  }
+
+  function writeClipboardFallback(text) {
+    const temp = document.createElement("textarea");
+    temp.value = text;
+    temp.setAttribute("readonly", "");
+    temp.style.position = "fixed";
+    temp.style.left = "-9999px";
+    document.body.appendChild(temp);
+    temp.select();
+    document.execCommand("copy");
+    temp.remove();
+  }
+
   function renderTags() {
     tagList.innerHTML = "";
     tags.forEach((tag) => {
@@ -456,11 +623,15 @@
       btn.className = "tag-choice";
       btn.textContent = tag.name;
       btn.style.background = tag.color;
-      btn.title = "双击修改标签";
+      btn.title = "点击单选；按住 Shift 多选；双击修改标签";
       btn.setAttribute("aria-pressed", String(selectedTags.has(tag.name)));
-      btn.addEventListener("click", () => {
-        if (selectedTags.has(tag.name)) selectedTags.delete(tag.name);
-        else selectedTags.add(tag.name);
+      btn.addEventListener("click", (event) => {
+        if (event.shiftKey) {
+          if (selectedTags.has(tag.name)) selectedTags.delete(tag.name);
+          else selectedTags.add(tag.name);
+        } else {
+          selectedTags = new Set([tag.name]);
+        }
         renderTags();
       });
       btn.addEventListener("dblclick", (event) => {
@@ -863,7 +1034,6 @@
 
   function placePopover(preferredLeft, preferredTop) {
     const margin = 16;
-    pop.dataset.open = "true";
     pop.style.visibility = "hidden";
     pop.style.left = "0px";
     pop.style.top = "0px";
@@ -877,6 +1047,7 @@
     pop.style.left = `${clamp(preferredLeft, minLeft, maxLeft)}px`;
     pop.style.top = `${clamp(preferredTop, minTop, maxTop)}px`;
     pop.style.visibility = "";
+    pop.dataset.open = "true";
   }
 
   function openPopover(meta, range) {
@@ -941,6 +1112,7 @@
   }
 
   function closePopover() {
+    window.clearTimeout(noteAutosaveTimer);
     if (activeSelection?.id) setEditingMark(activeSelection.id, false);
     if (!editingId) clearSelectionPreview();
     pop.dataset.open = "false";
@@ -997,20 +1169,41 @@
     return annotation.tags?.[0]?.name || "";
   }
 
-  function makeCard(annotation, top) {
+  function annotationDisplayLabels(items) {
+    const counters = new Map();
+    const result = new Map();
+    items.forEach((annotation) => {
+      const names = (annotation.tags || []).map((tag) => tag.name).filter(Boolean);
+      const labels = (names.length ? names : ["批注"]).map((label) => {
+        counters.set(label, (counters.get(label) || 0) + 1);
+        return `${label} ${counters.get(label)}`;
+      });
+      result.set(annotation.id, labels);
+    });
+    return result;
+  }
+
+  function makeCard(annotation, top, displayLabels = []) {
     const card = document.createElement("article");
     card.className = "annotation-card";
     card.dataset.id = annotation.id;
     card.style.top = `${top}px`;
     card.style.borderLeftColor = primaryTagColor(annotation);
     card.style.borderRightColor = primaryTagColor(annotation);
-    const tagsHtml = (annotation.tags || []).map((tag) => `<span class="annotation-tag" style="background:${escapeHtml(tag.color)}">${escapeHtml(tag.name)}</span>`).join("");
+    const labels = Array.isArray(displayLabels) ? displayLabels : [];
+    const tagsHtml = (annotation.tags || []).map((tag, index) => {
+      const label = labels[index] || tag.name;
+      return `<span class="annotation-tag" style="background:${escapeHtml(tag.color)}">${escapeHtml(label.replace(/\s+/g, " "))}</span>`;
+    }).join("");
+    const fallbackLabelsHtml = !tagsHtml
+      ? labels.map((label) => `<span class="annotation-card-number">${escapeHtml(label.replace(/\s+/g, " "))}</span>`).join("")
+      : "";
     const boardHtml = annotation.board ? `<img class="annotation-thumb" src="${annotation.board}" alt="白板批注">` : "";
     const noteHtml = annotation.note
       ? `<p class="card-note" data-quick-edit="${escapeHtml(annotation.id)}" title="双击快速编辑">${escapeHtml(annotation.note)}</p>`
       : `<p class="card-note card-note-empty" data-quick-edit="${escapeHtml(annotation.id)}" title="双击快速编辑">双击添加批注</p>`;
     card.innerHTML = `
-      ${tagsHtml ? `<div class="card-tags">${tagsHtml}</div>` : ""}
+      ${(tagsHtml || fallbackLabelsHtml) ? `<div class="card-tags">${tagsHtml}${fallbackLabelsHtml}</div>` : ""}
       ${noteHtml}
       ${boardHtml}
       <div class="card-actions">
@@ -1072,9 +1265,16 @@
       .map((node) => node.getBoundingClientRect())
       .filter((rect) => rect.width > 0 && rect.height > 0 && rect.width < window.innerWidth * 0.86);
     if (!rects.length) return main.getBoundingClientRect();
+    const percentile = (values, ratio) => {
+      const sorted = values.slice().sort((a, b) => a - b);
+      const index = Math.min(sorted.length - 1, Math.max(0, Math.floor((sorted.length - 1) * ratio)));
+      return sorted[index];
+    };
+    const lefts = rects.map((rect) => rect.left);
+    const rights = rects.map((rect) => rect.right);
     return {
-      left: Math.min(...rects.map((rect) => rect.left)),
-      right: Math.max(...rects.map((rect) => rect.right)),
+      left: percentile(lefts, 0.25),
+      right: percentile(rights, 0.75),
       top: Math.min(...rects.map((rect) => rect.top)),
       bottom: Math.max(...rects.map((rect) => rect.bottom)),
       width: 0,
@@ -1086,22 +1286,19 @@
     const mainRect = contentRect();
     const railWidth = rail.offsetWidth || leftRail?.offsetWidth || 380;
     const gap = 24;
+    const rightGap = 56;
     const edgeMargin = 12;
     const viewportLeft = window.scrollX;
     const viewportRight = window.scrollX + window.innerWidth;
-    const enoughSpace = railWidth + gap + edgeMargin;
+    const enoughSpace = railWidth + rightGap + edgeMargin;
     const leftSpace = mainRect.left - edgeMargin;
     const rightSpace = window.innerWidth - mainRect.right - edgeMargin;
-    const rightMin = mainRect.right + window.scrollX + gap;
+    const rightMin = mainRect.right + window.scrollX + rightGap;
     const rightMax = viewportRight - railWidth - edgeMargin;
     const leftMin = viewportLeft + edgeMargin;
     const leftMax = mainRect.left + window.scrollX - gap - railWidth;
-    const rightLeft = rightMax >= rightMin
-      ? rightMin + (rightMax - rightMin) / 2
-      : Math.min(rightMin, rightMax);
-    const leftLeft = leftMax >= leftMin
-      ? leftMin + (leftMax - leftMin) / 2
-      : Math.max(leftMin, leftMax);
+    const rightLeft = rightMax >= rightMin ? rightMin : Math.min(rightMin, rightMax);
+    const leftLeft = leftMax >= leftMin ? leftMax : Math.max(leftMin, leftMax);
     const result = {
       mainRect,
       right: {
@@ -1180,19 +1377,19 @@
     editor.addEventListener("blur", () => finish(true));
   }
 
-  function commitPopover() {
-    if (!activeSelection) return;
+  function savePopoverDraft({ closeAfter = false } = {}) {
+    if (!activeSelection) return false;
     const selection = window.getSelection();
     const boardData = boardMode ? board.toDataURL("image/png") : "";
+    let savedId = editingId;
     if (editingId) {
       const annotation = annotations.find((item) => item.id === editingId);
-      if (!annotation) return;
+      if (!annotation) return false;
       annotation.note = noteInput.value.trim();
       annotation.tags = selectedTagObjects();
       annotation.board = boardData;
       annotation.anchor = annotation.anchor || textAnchorForRange(rangeFromExistingMarks(annotation.id));
       annotation.updatedAt = new Date().toISOString();
-      setEditingMark(annotation.id, false);
     } else {
       const annotation = {
         id: activeSelection.id,
@@ -1214,12 +1411,46 @@
       };
       annotations.push(annotation);
       addSelectionMark(annotation);
+      editingId = annotation.id;
+      savedId = annotation.id;
       selectionPreviewId = null;
     }
     saveAll();
-    withSuppressedSelection(() => selection?.removeAllRanges());
-    closePopover();
     renderAnnotations();
+    if (savedId) setEditingMark(savedId, true);
+    if (closeAfter) {
+      withSuppressedSelection(() => selection?.removeAllRanges());
+      closePopover();
+    }
+    return true;
+  }
+
+  function hasBoardDraft() {
+    return boardMode && undoStack.length > 1;
+  }
+
+  function finishPopoverFromBlankClick() {
+    if (pop.dataset.open !== "true") return;
+    window.clearTimeout(noteAutosaveTimer);
+    const hasDraft = !!(noteInput.value.trim() || hasBoardDraft());
+    if (editingId || hasDraft) {
+      savePopoverDraft({ closeAfter: true });
+      return;
+    }
+    closePopover();
+  }
+
+  function scheduleNoteAutosave() {
+    if (!activeSelection) return;
+    window.clearTimeout(noteAutosaveTimer);
+    noteAutosaveTimer = window.setTimeout(() => {
+      if (!activeSelection || (!editingId && !noteInput.value.trim())) return;
+      savePopoverDraft({ closeAfter: false });
+    }, 450);
+  }
+
+  function commitPopover() {
+    savePopoverDraft({ closeAfter: true });
   }
 
   function clearAllAnnotations() {
@@ -1248,6 +1479,7 @@
     const sorted = visibleAnnotations()
       .slice()
       .sort((a, b) => anchorRect(a).top - anchorRect(b).top);
+    const displayLabels = annotationDisplayLabels(sorted);
     const layout = availableRails();
     Object.values(layout).forEach((item) => {
       if (item?.rail) item.rail.style.setProperty("--annotation-rail-left", `${item.left}px`);
@@ -1269,7 +1501,7 @@
         annotation.height = rectMeta.height;
         const desired = Math.max(0, annotation.top - railRect.top - window.scrollY);
         const top = desired;
-        const card = makeCard(annotation, top);
+        const card = makeCard(annotation, top, displayLabels.get(annotation.id));
         card.dataset.annotationSide = side;
         if (side === "left") card.style.borderLeftColor = "var(--color-rule, #e3e1da)";
         else card.style.borderRightColor = "var(--color-rule, #e3e1da)";
@@ -1358,10 +1590,28 @@
     });
   }
 
+  function tocTitleForHeading(headingId) {
+    const toc = document.querySelector("#TOC, nav[role='doc-toc'], nav.toc, .toc");
+    if (!toc || !headingId) return "";
+    const link = tocLinkForHeading(toc, headingId);
+    if (!link) return "";
+    return cleanTitleText(link.textContent);
+  }
+
+  function cleanHeadingText(heading) {
+    if (!heading) return "";
+    const clone = heading.cloneNode(true);
+    clone.querySelectorAll?.(".toc-note-markers,.toc-note-dot,[data-annotation-id],[data-annotation-preview-id]").forEach((node) => node.remove());
+    return cleanTitleText(clone.textContent);
+  }
+
   function highlightAnnotation(id, on) {
     cardForAnnotation(id)?.classList.toggle("annotation-active", on);
     document.querySelectorAll(`[data-annotation-id="${CSS.escape(id)}"]`).forEach((mark) => {
       mark.classList.toggle("annotation-active", on);
+    });
+    document.querySelectorAll(`[data-annotation-toc-id="${CSS.escape(id)}"]`).forEach((dot) => {
+      dot.classList.toggle("annotation-active", on);
     });
     document.querySelectorAll(`[data-annotation-connector-id="${CSS.escape(id)}"]`).forEach((connector) => {
       connector.classList.toggle("annotation-active", on);
@@ -1373,7 +1623,10 @@
     const toc = document.querySelector("#TOC, nav[role='doc-toc'], nav.toc, .toc");
     if (!toc) return;
     const grouped = new Map();
-    visibleAnnotations().forEach((annotation) => {
+    visibleAnnotations()
+      .slice()
+      .sort((a, b) => anchorRect(a).top - anchorRect(b).top || (a.left || 0) - (b.left || 0))
+      .forEach((annotation) => {
       const heading = headingForAnnotationInToc(annotation, toc);
       if (!heading?.id) return;
       if (!grouped.has(heading.id)) grouped.set(heading.id, []);
@@ -1389,6 +1642,7 @@
         const colors = (annotation.tags || []).map((tag) => tag.color).filter(Boolean);
         dot.type = "button";
         dot.className = "toc-note-dot";
+        dot.dataset.annotationTocId = annotation.id;
         dot.style.background = tagDotBackground(colors.length ? colors : [palette[index % palette.length]]);
         dot.title = annotation.note ? trimmed(annotation.note, 48) : "跳转到批注";
         dot.setAttribute("aria-label", "跳转到批注");
@@ -1467,7 +1721,18 @@
 
   function scheduleExportMenuClose() {
     window.clearTimeout(exportMenuTimer);
-    exportMenuTimer = window.setTimeout(closeExportMenus, 180);
+    exportMenuTimer = window.setTimeout(() => {
+      if (
+        exportBox?.matches?.(":hover") ||
+        exportPanel?.matches?.(":hover") ||
+        exportBox?.contains?.(document.activeElement) ||
+        exportPanel?.contains?.(document.activeElement)
+      ) {
+        cancelExportMenuClose();
+        return;
+      }
+      closeExportMenus();
+    }, 320);
   }
 
   function cancelExportMenuClose() {
@@ -1523,7 +1788,7 @@
 
   function headingTitle(annotation) {
     const heading = headingForAnnotation(annotation);
-    return heading?.textContent?.trim() || "正文目录";
+    return tocTitleForHeading(heading?.id) || cleanHeadingText(heading) || "正文目录";
   }
 
   function htmlFileName() {
@@ -1554,11 +1819,6 @@
     const lines = [
       `# ${pageTitle()} - 批注导出`,
       "",
-    ];
-    if (overview) {
-      lines.push("## 总记录", "", overview, "");
-    }
-    lines.push(
       "## 说明",
       "",
       "这个 Markdown 文件由 HTML 批注系统导出，用于汇总正文引用、标签和批注内容，方便后续交给 GPT 继续分析。",
@@ -1567,26 +1827,27 @@
       `- 标签筛选: ${selected.length ? selected.join(", ") : "全部"}`,
       `- 批注数量: ${items.length}`,
       "",
-      "## 规则",
+      "### 规则",
       "",
       "- 批注按标签顺序排列；同一标签下按正文出现顺序排列。",
       "- 每条批注先给出引用正文，再给出“标签编号：批注内容”。",
+      "- 原文引用默认放在代码块中，以尽量保留跨行文本、反斜杠和公式源码，方便继续交给 AI 分析。",
       "- 不导出时间戳。",
       "",
-      "## 标签统计",
+      "### 标签统计",
       "",
-    );
+    ];
     tags.forEach((tag) => {
       lines.push(`- ${tag.name}: ${stats.counts.get(tag.name) || 0}`);
     });
     if (stats.untagged) lines.push(`- 无标签: ${stats.untagged}`);
-    lines.push("");
+    lines.push("", "## 总结", "", overview || "（无）", "", "## 具体记录", "");
 
     items.forEach((annotation, index) => {
       const heading = headingTitle(annotation);
       if (heading !== currentHeading) {
         currentHeading = heading;
-        lines.push(`## ${heading}`, "");
+        lines.push(`### ${heading}`, "");
       }
       const label = annotationExportTag(annotation);
       tagCounters.set(label, (tagCounters.get(label) || 0) + 1);
@@ -1691,6 +1952,7 @@
       const writable = await handle.createWritable();
       await writable.write(html);
       await writable.close();
+      showSaveToast("Saved");
     } catch (error) {
       if (error?.name !== "AbortError") window.alert("Save failed. Choose the current HTML file when prompted, or use Save as.");
     }
@@ -2057,7 +2319,13 @@
     const target = event.target;
     if (target.closest?.(".annotation-popover,.annotation-rail,.annotation-export,.annotation-overview-dock")) return;
     closeExportMenus();
-    if (pop.dataset.open === "true" && !editingId) closePopover();
+    finishPopoverFromBlankClick();
+  });
+  document.addEventListener("copy", (event) => {
+    if (pop.dataset.open !== "true" || !activeSelection?.text) return;
+    if (editableSelectionText()) return;
+    event.preventDefault();
+    event.clipboardData?.setData("text/plain", activeSelection.text);
   });
 
   overviewDock?.addEventListener("mouseenter", () => {
@@ -2088,7 +2356,13 @@
   exportBox.addEventListener("mouseleave", scheduleExportMenuClose);
   exportBox.addEventListener("focusin", cancelExportMenuClose);
   exportBox.addEventListener("focusout", (event) => {
-    if (!exportBox.contains(event.relatedTarget)) scheduleExportMenuClose();
+    if (!exportBox.contains(event.relatedTarget) && !exportPanel?.contains?.(event.relatedTarget)) scheduleExportMenuClose();
+  });
+  exportPanel?.addEventListener("mouseenter", cancelExportMenuClose);
+  exportPanel?.addEventListener("mouseleave", scheduleExportMenuClose);
+  exportPanel?.addEventListener("focusin", cancelExportMenuClose);
+  exportPanel?.addEventListener("focusout", (event) => {
+    if (!exportBox.contains(event.relatedTarget) && !exportPanel.contains(event.relatedTarget)) scheduleExportMenuClose();
   });
 
   exportOpen.addEventListener("mouseenter", openExportPanel);
@@ -2111,19 +2385,7 @@
   exportDownload?.addEventListener("click", exportAnnotationsMarkdown);
   exportHtml?.addEventListener("click", exportAnnotatedHtml);
   layerAdd?.addEventListener("click", () => {
-    const name = window.prompt("New group name", nextLayerName());
-    const cleanName = String(name || "").trim();
-    if (!cleanName) return;
-    const layer = {
-      id: `layer-${Date.now()}-${Math.random().toString(16).slice(2)}`,
-      name: cleanName,
-      visible: true,
-    };
-    layerState.items.push(layer);
-    layerState.activeId = layer.id;
-    saveAll();
-    renderLayerList();
-    refreshAnnotationVisibility();
+    openLayerNameDialog("new");
   });
   layerList?.addEventListener("change", (event) => {
     const id = event.target?.dataset?.layerVisible;
@@ -2142,16 +2404,28 @@
   layerList?.addEventListener("click", (event) => {
     const currentId = event.target?.dataset?.layerCurrent;
     const renameId = event.target?.dataset?.layerRename;
+    const deleteId = event.target?.dataset?.layerDelete;
+    if (deleteId) {
+      requestLayerDelete(deleteId);
+      return;
+    }
     if (currentId) setActiveLayer(currentId);
     if (renameId) {
       const layer = layerById(renameId);
       if (!layer) return;
-      const name = window.prompt("Group name", layer.name);
-      const cleanName = String(name || "").trim();
-      if (!cleanName) return;
-      layer.name = cleanName;
-      saveAll();
-      renderLayerList();
+      openLayerNameDialog("rename", renameId);
+    }
+  });
+  layerDeleteCancel?.addEventListener("click", closeLayerDeleteConfirm);
+  layerDeleteConfirm?.addEventListener("click", submitLayerDialog);
+  layerNameInput?.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      submitLayerDialog();
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      closeLayerDeleteConfirm();
     }
   });
   bodyBackgroundToggle?.addEventListener("click", () => {
@@ -2173,17 +2447,13 @@
     event.preventDefault();
     commitPopover();
   });
+  noteInput.addEventListener("input", scheduleNoteAutosave);
   copy.addEventListener("click", async () => {
     if (!activeSelection) return;
     try {
       await navigator.clipboard.writeText(activeSelection.text);
     } catch {
-      const temp = document.createElement("textarea");
-      temp.value = activeSelection.text;
-      document.body.appendChild(temp);
-      temp.select();
-      document.execCommand("copy");
-      temp.remove();
+      writeClipboardFallback(activeSelection.text);
     }
   });
   toggleBoard.addEventListener("click", () => {

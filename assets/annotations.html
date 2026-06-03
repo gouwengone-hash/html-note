@@ -3,6 +3,7 @@
 <div class="annotation-overview-dock" id="annotation-overview-dock">
   <button type="button" id="annotation-overview-open">总记录</button>
   <button type="button" id="annotation-save-html">保存</button>
+  <div id="annotation-save-toasts" class="annotation-save-toasts" role="status" aria-live="polite"></div>
   <div class="annotation-overview-panel" id="annotation-overview-panel" role="dialog" aria-label="总记录">
     <header>
       <span>总记录</span>
@@ -15,11 +16,11 @@
   </div>
 </div>
 <div class="annotation-export" id="annotation-export">
-  <button type="button" id="annotation-body-background-toggle" class="annotation-background-toggle" aria-pressed="false">background</button>
-  <button type="button" id="annotation-export-open">Mune</button>
+  <button type="button" id="annotation-body-background-toggle" class="annotation-background-toggle" aria-pressed="false">Background</button>
+  <button type="button" id="annotation-export-open">Menu</button>
   <div class="annotation-export-panel" id="annotation-export-panel" role="dialog" aria-label="html-note menu">
     <header>
-      <span>Mune</span>
+      <span>Menu</span>
       <button type="button" id="annotation-export-html">Save as</button>
     </header>
     <section class="annotation-layer-panel" aria-label="annotation groups">
@@ -28,6 +29,16 @@
         <button type="button" id="annotation-layer-add">new group</button>
       </div>
       <div class="annotation-layer-list" id="annotation-layer-list"></div>
+      <div class="annotation-layer-confirm" id="annotation-layer-confirm" role="dialog" aria-label="group dialog" hidden>
+        <div class="annotation-layer-confirm-card">
+          <strong id="annotation-layer-dialog-title">里面有批注，确认是否删除</strong>
+          <input type="text" id="annotation-layer-name-input" aria-label="group name" hidden>
+          <div class="annotation-layer-confirm-actions">
+            <button type="button" id="annotation-layer-delete-cancel">cancel</button>
+            <button type="button" id="annotation-layer-delete-confirm">delete</button>
+          </div>
+        </div>
+      </div>
     </section>
     <div class="annotation-tag-row">
       <div class="annotation-export-tags" id="annotation-export-tags"></div>
@@ -49,6 +60,7 @@
   </header>
   <div class="text-mode">
     <textarea id="annotation-text" placeholder="写下你的想法、疑问或下一步动作..."></textarea>
+    <div class="tag-hint">点击选择一个标签；按住 Shift 可多选。</div>
     <div class="tag-list" id="annotation-tag-list"></div>
     <div class="row tag-create" id="annotation-tag-create" hidden>
       <input type="text" id="annotation-tag-input" placeholder="新标签，例如：疑问">

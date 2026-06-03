@@ -56,7 +56,7 @@ body { position: relative; }
   white-space: nowrap;
   transition: color 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 180ms ease, transform 260ms var(--annotation-menu-spring), opacity 180ms ease, max-width 260ms var(--annotation-menu-spring), padding 220ms ease;
 }
-.annotation-export > button:not(#annotation-export-open) {
+.annotation-export > button:not(#annotation-export-open):not(#annotation-body-background-toggle) {
   max-width: 0;
   padding-left: 0;
   padding-right: 0;
@@ -97,6 +97,42 @@ body { position: relative; }
   border-color: color-mix(in oklab, var(--color-accent, #2c5e3f), transparent 35%);
   color: var(--color-accent, #2c5e3f);
 }
+.annotation-save-toasts {
+  position: absolute;
+  left: calc(100% + 0.65rem);
+  bottom: 0.24rem;
+  display: grid;
+  gap: 0.25rem;
+  pointer-events: none;
+}
+.annotation-save-toast {
+  padding: 0.34em 0.66em;
+  border: 1px solid color-mix(in oklab, var(--color-accent, #2c5e3f), transparent 55%);
+  border-radius: 4px;
+  color: var(--color-accent, #2c5e3f);
+  background: color-mix(in oklab, var(--color-paper, #fbfaf6), white 8%);
+  box-shadow: 0 12px 28px color-mix(in oklab, var(--color-ink, #1f201d), transparent 84%);
+  white-space: nowrap;
+  animation: annotation-save-float 1.15s ease-out both;
+}
+@keyframes annotation-save-float {
+  0% {
+    opacity: 0;
+    transform: translateY(0.65rem) scale(0.96);
+  }
+  18% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  72% {
+    opacity: 1;
+    transform: translateY(-0.35rem) scale(1);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-1.05rem) scale(0.98);
+  }
+}
 .annotation-background-toggle[aria-pressed="true"] {
   border-color: var(--color-accent, #2c5e3f);
   color: white;
@@ -121,6 +157,68 @@ body { position: relative; }
   transform: translateY(18px) scale(0.94);
   transform-origin: bottom right;
   transition: opacity 170ms ease, visibility 0s linear 190ms, transform 280ms var(--annotation-menu-spring);
+}
+.annotation-export-panel::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -18px;
+  height: 18px;
+}
+.annotation-layer-confirm {
+  position: absolute;
+  inset: 0.65em;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  padding: 0.6rem;
+  border-radius: 6px;
+  background: color-mix(in oklab, var(--color-paper, #fbfaf6), transparent 24%);
+  backdrop-filter: blur(3px);
+}
+.annotation-layer-confirm[hidden] {
+  display: none;
+}
+.annotation-layer-confirm-card {
+  min-width: min(300px, 100%);
+  box-sizing: border-box;
+  padding: 0.9em;
+  border: 1px solid color-mix(in oklab, var(--color-rule-strong, #c8c5bb), transparent 12%);
+  border-radius: 6px;
+  background: var(--color-paper, #fbfaf6);
+  box-shadow: 0 18px 50px color-mix(in oklab, var(--color-ink, #1f201d), transparent 82%);
+}
+.annotation-layer-confirm-card strong {
+  display: block;
+  margin-bottom: 0.75em;
+  font-size: 0.9rem;
+}
+.annotation-layer-confirm-card input {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 0.75em;
+  border: 1px solid var(--color-rule-strong, #c8c5bb);
+  border-radius: 4px;
+  padding: 0.48em 0.6em;
+  color: var(--color-ink, #1f201d);
+  background: color-mix(in oklab, var(--color-paper, #fbfaf6), white 18%);
+  font: inherit;
+}
+.annotation-layer-confirm-card input[hidden] {
+  display: none;
+}
+.annotation-layer-confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.45em;
+}
+.annotation-layer-confirm-actions button {
+  min-width: 4.8rem;
+}
+#annotation-layer-delete-confirm {
+  border-color: color-mix(in oklab, #b8653b, transparent 28%);
+  color: #8f3f22;
 }
 .annotation-overview-panel {
   position: absolute;
@@ -226,6 +324,7 @@ body { position: relative; }
   min-width: 4.5rem;
 }
 .annotation-layer-panel {
+  position: relative;
   margin: 0.75em 0;
   padding: 0.65em;
   border: 1px solid color-mix(in oklab, var(--color-rule, #e3e1da), transparent 14%);
@@ -271,6 +370,17 @@ body { position: relative; }
   color: var(--color-accent, #2c5e3f);
   font-size: 0.72rem;
   font-weight: 700;
+}
+.annotation-layer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.35em;
+}
+.annotation-layer-actions button {
+  min-width: 4.4rem;
+}
+.annotation-layer-actions [data-layer-delete] {
+  color: #8f3f22;
 }
 .annotation-export-tag {
   display: inline-flex;
@@ -391,6 +501,15 @@ body { position: relative; }
   font-size: 0.74rem;
   line-height: 1.45;
 }
+.annotation-card-number {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.2rem;
+  color: var(--color-ink, #1f201d);
+  font-weight: 700;
+  font-size: 0.86rem;
+  line-height: 1.35;
+}
 .annotation-card .card-actions {
   display: flex;
   visibility: hidden;
@@ -446,12 +565,16 @@ body { position: relative; }
   box-sizing: border-box;
   cursor: pointer;
   box-shadow: 0 0 0 1px color-mix(in oklab, var(--color-paper, #fbfaf6), transparent 35%);
+  transition: box-shadow 140ms ease, outline-color 140ms ease, transform 140ms ease;
   vertical-align: middle;
 }
 .toc-note-dot:hover,
-.toc-note-dot:focus {
+.toc-note-dot:focus,
+.toc-note-dot.annotation-active {
   outline: 2px solid color-mix(in oklab, var(--color-accent, #2c5e3f), transparent 35%);
   outline-offset: 2px;
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--note-warm, #b8653b), transparent 78%);
+  transform: scale(1.18);
 }
 mark.annotation-phrase,
 mark.annotation-block { background-color: transparent; }
@@ -520,7 +643,7 @@ body[data-annotation-body-background="true"] .annotation-block {
 }
 .annotation-popover {
   position: absolute;
-  display: none;
+  display: block;
   width: min(460px, calc(100vw - 32px));
   max-height: calc(100vh - 32px);
   overflow: auto;
@@ -532,8 +655,20 @@ body[data-annotation-body-background="true"] .annotation-block {
   color: var(--color-ink, #1f201d);
   box-shadow: 0 18px 50px color-mix(in oklab, var(--color-ink, #1f201d), transparent 84%);
   z-index: 60;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(14px) scale(0.96);
+  transform-origin: top left;
+  transition: opacity 170ms ease, visibility 0s linear 190ms, transform 280ms var(--annotation-menu-spring);
 }
-.annotation-popover[data-open="true"] { display: block; }
+.annotation-popover[data-open="true"] {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(0) scale(1);
+  transition-delay: 0s;
+}
 .annotation-popover header {
   display: flex;
   align-items: center;
@@ -570,6 +705,12 @@ body[data-annotation-body-background="true"] .annotation-block {
   align-items: center;
   flex-wrap: wrap;
   gap: 0.35em;
+}
+.annotation-popover .tag-hint {
+  margin: 0.4em 0 0.3em;
+  color: color-mix(in oklab, var(--color-ink, #1f201d), transparent 38%);
+  font-size: 0.78rem;
+  line-height: 1.4;
 }
 .annotation-popover .tag-choice {
   display: inline-flex;
